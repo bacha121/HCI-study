@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
@@ -22,10 +22,10 @@ input[type=range]{accent-color:#4f8ef7;cursor:pointer;width:100%;}
 .live-dot{animation:livePulse 2s ease-in-out infinite;}
 @media print{
   .no-print{display:none !important;}
-  .print-break{break-before:page;}
-  body>*{visibility:hidden;}
-  #report-root,#report-root *{visibility:visible;}
-  #report-root{position:fixed;inset:0;overflow:visible;}
+  .print-break{break-after:page;}
+  body{background:white !important;color:#111 !important;}
+  #research-summary{padding:0 !important;}
+  *{box-shadow:none !important;}
 }
 /* ── Responsive utilities ── */
 @media(max-width:639px){
@@ -145,12 +145,15 @@ const db = {
 };
 
 function hashPw(s) { let v = 5381; for (let i = 0; i < s.length; i++) v = ((v << 5) + v) ^ s.charCodeAt(i); return (v >>> 0).toString(16); }
-const uid   = () => "U" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2,5).toUpperCase();
-const shuf  = a => [...a].sort(() => Math.random() - 0.5);
-const avg   = a => a.length ? a.reduce((s,v) => s+v, 0) / a.length : 0;
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
-const fmtPct= v => v != null ? Math.round(v * 100) + "%" : "—";
-const fmtMs = v => v != null ? Math.round(v) + " ms" : "—";
+const uid = () => "U" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+const shuf = a => [...a].sort(() => Math.random() - 0.5);
+const avg = a => a.length ? a.reduce((s, v) => s + v, 0) / a.length : 0;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmtPct = v => v != null ? `${(v * 100).toFixed(1)}%` : "—";
+const fmtMs  = v => v != null ? `${Math.round(v)}ms` : "—";
+const fmt    = (v, d = 1) => v != null && !isNaN(v) ? Number(v).toFixed(d) : "—";
+// APA 7 p-value format — no leading zero, threshold at .001
+const fmtPVal = p => p == null ? "—" : p < .001 ? "< .001" : `.${String(Math.round(p * 1000)).padStart(3, "0")}`;
 
 // ─── STATISTICAL ENGINE ───────────────────────────────────────────────────────────
 // Lanczos log-gamma approximation
@@ -463,7 +466,7 @@ function computeAnalysis(users) {
     { k:"acc",    l:"Accuracy (0–1)",          fmt: v=>v.toFixed(3) },
     { k:"tt",     l:"Completion Time (ms)",     fmt: v=>Math.round(v) },
     { k:"rt",     l:"Response Time (ms)",       fmt: v=>Math.round(v) },
-    { k:"err",    l:"Error Count",              fmt: v=>Math.round(v) },
+    { k:"err",    l:"Error Count",              fmt: v=>v.toFixed(2) },
     { k:"clicks", l:"Click Count",             fmt: v=>v.toFixed(1) },
     { k:"path",   l:"Mouse Path (px)",         fmt: v=>Math.round(v) },
     { k:"idle",   l:"Idle Time (ms)",           fmt: v=>Math.round(v) },
@@ -1241,15 +1244,15 @@ function computeStats(user) {
   const betterTheme = accDk >= accLt && (rtDk === null || rtLt === null || rtDk <= rtLt) ? "dark" : "light";
   const speed = clamp(1 - avg([...dkRTs,...ltRTs].filter(Boolean).map(r => r / 2000)), 0, 1);
   const cog = {
-    // Each dimension maps directly to one of the 8 active tasks
-    attention:   avg((byTask.visual_search ||[]).map(t=>t.acc||0)) || 0,  // Visual Search  → Selective Attention
-    inhibition:  avg((byTask.flanker       ||[]).map(t=>t.acc||0)) || 0,  // Flanker        → Inhibitory Control
-    analysis:    avg((byTask.comparison    ||[]).map(t=>t.acc||0)) || 0,  // Data Comparison→ Analytical Thinking
-    reading:     avg((byTask.reading_comp  ||[]).map(t=>t.acc||0)) || 0,  // Reading Comp   → Reading Comprehension
-    decision:    avg((byTask.email_sel     ||[]).map(t=>t.acc||0)) || 0,  // Email Selection→ Decision Making
-    precision:   avg((byTask.form_fill     ||[]).map(t=>t.acc||0)) || 0,  // Form Filling   → Precision / Accuracy
-    memory:      avg((byTask.memory_recall ||[]).map(t=>t.acc||0)) || 0,  // Memory Recall  → Working Memory
-    navigation:  avg((byTask.nav_task      ||[]).map(t=>t.acc||0)) || 0,  // Navigation     → Spatial Navigation
+    speed: speed || 0,
+    accuracy: avg(all.map(t => t.acc || 0)),
+    // bt() safely returns an empty array for any task not in the active set
+    memory:     avg([...(byTask.memory_recall||[]),...(byTask.n_back||[])].map(t => t.acc || 0)) || 0,
+    inhibition: avg([...(byTask.flanker||[]),...(byTask.stroop||[])].map(t => t.acc || 0)) || 0,
+    pattern:    avg([...(byTask.pattern||[]),...(byTask.comparison||[])].map(t => t.acc || 0)) || 0,
+    arithmetic: avg((byTask.arithmetic||[]).map(t => t.acc || 0)) || 0,
+    attention:  avg([...(byTask.visual_search||[]),...(byTask.trail||[])].map(t => t.acc || 0)) || 0,
+    processing: clamp(1 - avg([...(byTask.stroop||[]),...(byTask.flanker||[])].filter(t => t.rt).map(t => t.rt / 1500)), 0, 1) || 0,
   };
   return { all, dk, lt, dkRTs, ltRTs, byTask, tperf, accDk, accLt, efDk, efLt, rtDk, rtLt, betterTheme, cog, comfortDk, comfortLt, n: exps.length };
 }
@@ -2762,6 +2765,12 @@ function AuthScreen({ onLogin, u, uiDark, onToggleTheme }) {
             <Btn u={u} v="grad" onClick={tab === "login" ? login : register} full style={{ marginTop: 4 }}>{tab === "login" ? "Sign In →" : "Create Account →"}</Btn>
           </div>
         </Card>
+        <Card u={u} style={{ marginTop: 14, padding: "14px 18px" }}>
+          <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 8, letterSpacing: .5, textTransform: "uppercase" }}>Quick access</div>
+          {[["alex@study.com","pass123","Participant demo"],["admin@study.com","hci2024","Admin panel"]].map(([e, p, l]) => (
+            <button key={e} onClick={() => setForm(f => ({ ...f, email: e, pw: p }))} style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 0", background: "none", border: "none", color: u.accent, fontSize: L.fsSm, cursor: "pointer", fontFamily: L.font }}>{l} → <span style={{ color: u.text3 }}>{e}</span></button>
+          ))}
+        </Card>
       </div>
     </div>
   );
@@ -2859,7 +2868,7 @@ function PatternsTab({ user, u }) {
     </div>
   );
 
-  const dims = [{ l:"Attention", v:stats.cog.attention },{ l:"Inhibition", v:stats.cog.inhibition },{ l:"Analysis", v:stats.cog.analysis },{ l:"Reading", v:stats.cog.reading },{ l:"Decision", v:stats.cog.decision },{ l:"Precision", v:stats.cog.precision },{ l:"Memory", v:stats.cog.memory },{ l:"Navigation", v:stats.cog.navigation }];
+  const dims = [{ l:"Speed", v:stats.cog.speed },{ l:"Accuracy", v:stats.cog.accuracy },{ l:"Memory", v:stats.cog.memory },{ l:"Inhibition", v:stats.cog.inhibition },{ l:"Pattern", v:stats.cog.pattern },{ l:"Arithmetic", v:stats.cog.arithmetic },{ l:"Attention", v:stats.cog.attention },{ l:"Processing", v:stats.cog.processing }];
 
   return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
@@ -2945,7 +2954,8 @@ function VisualComfortTab({ user, u }) {
           <SectionHeader title="Post-Phase Comfort Survey" sub="Collected after each interface phase · Scale: 1 (low) → 7 (high)" />
 
           {/* Column headers */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:L.spMd, marginBottom:L.spMd }}>
+          <div style={{ display:"grid", gridTemplateColumns:"160px 1fr 1fr", gap:L.spMd, marginBottom:L.spMd }}>
+            <div />
             {[{ label:"🌙 Dark Mode", color:u.accent2 },{ label:"☀️ Light Mode", color:u.gold }].map(({ label, color }) => (
               <div key={label} style={{ textAlign:"center", padding:"6px 12px", borderRadius:R.md, background:`${color}10`, border:`1px solid ${color}28` }}>
                 <span style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color }}>{label}</span>
@@ -2961,26 +2971,31 @@ function VisualComfortTab({ user, u }) {
               const ltBetter = dk!=null && lt!=null && (higherBetter ? lt>dk : lt<dk);
               return (
                 <div key={key}>
-                  {/* Dimension label */}
-                  <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:L.spMd }}>
-                    <span style={{ fontSize:16 }}>{icon}</span>
-                    <span style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{label}</span>
-                    <span style={{ fontSize:L.fsXs, color:u.text3 }}>({anchor1} → {anchor2})</span>
-                  </div>
-                  {/* Scales side by side */}
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:L.spMd }}>
-                    {[{ value:dk, color:u.accent2, better:dkBetter, lbl:"🌙" },{ value:lt, color:u.gold, better:ltBetter, lbl:"☀️" }].map(({ value, color, better, lbl }, i) => (
+                  <div style={{ display:"grid", gridTemplateColumns:"160px 1fr 1fr", gap:L.spMd, alignItems:"start" }}>
+                    <div style={{ paddingTop:8 }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                        <span style={{ fontSize:16 }}>{icon}</span>
+                        <span style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{label}</span>
+                      </div>
+                      <div style={{ fontSize:L.fsXs, color:u.text3, lineHeight:1.4 }}>{anchor1} →<br/>{anchor2}</div>
+                    </div>
+                    {[{ value:dk, color:u.accent2, better:dkBetter },{ value:lt, color:u.gold, better:ltBetter }].map(({ value, color, better }, i) => (
                       <div key={i}>
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:L.spSm }}>
-                          <span style={{ fontSize:L.fsXs, color, fontWeight:L.fwSemi }}>{lbl} {value??"-"}/7</span>
+                          <span style={{ fontSize:L.fsXs, color, fontWeight:L.fwSemi }}>Score: {value??"-"}/7</span>
                           {better && <span style={{ fontSize:L.fsXs, color:u.green, fontWeight:L.fwSemi }}>✓ Better</span>}
                         </div>
                         <LikertRow value={value} color={color} />
                       </div>
                     ))}
                   </div>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginTop:L.spSm, fontSize:L.fsXs, color:u.text3 }}>
-                    <span>1 — {anchor1}</span><span>7 — {anchor2}</span>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginLeft:176, marginTop:L.spSm, gap:L.spMd }}>
+                    {[0,1].map(i => (
+                      <div key={i} style={{ flex:1, display:"flex", justifyContent:"space-between" }}>
+                        <span style={{ fontSize:L.fsXs, color:u.text3 }}>1 — {anchor1}</span>
+                        <span style={{ fontSize:L.fsXs, color:u.text3 }}>7 — {anchor2}</span>
+                      </div>
+                    ))}
                   </div>
                   <div style={{ borderBottom:`1px solid ${u.border}`, marginTop:L.spMd }} />
                 </div>
@@ -3011,7 +3026,7 @@ function ObjectiveTab({ user, u }) {
       <SectionHdr u={u} eyebrow="Objective Measures" title="Performance Evaluation" sub="Metrics automatically recorded during the experiment — accuracy, speed, and errors." />
 
       {/* Summary cards */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:L.spMd, marginBottom:24 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:L.spMd, marginBottom:24 }}>
         {[
           { label:"Dark Accuracy",  value:fmtPct(stats.accDk),  sub:"proportion correct",  c:u.accent2 },
           { label:"Light Accuracy", value:fmtPct(stats.accLt),  sub:"proportion correct",  c:u.gold    },
@@ -3173,21 +3188,24 @@ function WorkloadTab({ user, u }) {
               const c = col(val, lowerBetter);
               const l = lbl(val, lowerBetter);
               return (
-                <Card key={key} u={u} style={{ padding:L.spMd, borderLeft:`3px solid ${c}` }}>
-                  <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:L.spMd }}>
-                    <div style={{ flex:1 }}>
+                <Card key={key} u={u} style={{ padding:L.spLg, borderLeft:`3px solid ${c}` }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:L.spLg, alignItems:"start" }}>
+                    <div>
                       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                        <span style={{ fontSize:18 }}>{icon}</span>
-                        <span style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{label}</span>
+                        <span style={{ fontSize:20 }}>{icon}</span>
+                        <span style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>{label}</span>
                         <span style={{ fontSize:L.fsXs, padding:"2px 8px", borderRadius:R.pill, background:`${c}18`, color:c, border:`1px solid ${c}28`, fontWeight:L.fwSemi }}>{l}</span>
                       </div>
-                      <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd, lineHeight:1.5 }}>{desc}</div>
+                      <div style={{ fontSize:L.fsSm, color:u.text3, marginBottom:L.spMd, lineHeight:1.5 }}>{desc}</div>
                       <div style={{ height:8, background:u.fill, borderRadius:99, overflow:"hidden", border:`1px solid ${u.border}` }}>
                         <div style={{ height:"100%", width:`${(val/20)*100}%`, background:c, borderRadius:99, transition:"width .8s" }} />
                       </div>
+                      <div style={{ display:"flex", justifyContent:"space-between", marginTop:4, fontSize:L.fsXs, color:u.text3 }}>
+                        <span>1</span><span>10</span><span>20</span>
+                      </div>
                     </div>
-                    <div style={{ textAlign:"center", minWidth:44, flexShrink:0 }}>
-                      <div style={{ fontSize:28, fontWeight:L.fwBlack, color:c, fontFamily:L.mono, lineHeight:1 }}>{val}</div>
+                    <div style={{ textAlign:"center", minWidth:56 }}>
+                      <div style={{ fontSize:36, fontWeight:L.fwBlack, color:c, fontFamily:L.mono, lineHeight:1 }}>{val}</div>
                       <div style={{ fontSize:L.fsXs, color:u.text3 }}>/20</div>
                     </div>
                   </div>
@@ -3210,12 +3228,8 @@ function WorkloadTab({ user, u }) {
 function Dashboard({ user, u, onStart, onProfile, onTutorial }) {
   const stats = useMemo(() => computeStats(user), [user]);
   const recent = (user.experiments || []).slice(-4).reverse();
+  // Completed = explicit flag OR two experiment sessions already saved
   const isCompleted = !!(user.completed || (user.experiments || []).length >= 2);
-  const [reportStatus, setReportStatus] = useState("");
-  const isGenerating = false;
-
-  const handleDownloadReport = () => setReportStatus("open");
-
   return (
     <div style={{ padding: `${L.spXl}px ${L.spLg}px`, fontFamily: L.font }} className="au">
       <div style={{ marginBottom: 28 }}>
@@ -3223,7 +3237,6 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial }) {
         <h1 style={{ fontSize: L.fs2Xl, fontWeight: L.fwBlack, color: u.text, margin: 0, letterSpacing: -1.5 }}>Hi, {user.name.split(" ")[0]} 👋</h1>
         <p style={{ color: u.text2, fontSize: L.fsMd, marginTop: 8 }}>{isCompleted ? "Experiment complete — your data has been saved." : stats ? `${stats.n} session${stats.n !== 1 ? "s" : ""} in progress` : "Ready for your first session?"}</p>
       </div>
-      {reportStatus === "open" && <ReportScreen user={user} u={u} onBack={() => setReportStatus("")} />}
       <Card u={u} style={{ padding: 24, marginBottom: 20, background: isCompleted ? u.greenBg : u.gradSoft, border: `1px solid ${isCompleted ? u.green : u.accent}20` }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
           {isCompleted ? (
@@ -3236,15 +3249,7 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial }) {
                   <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 4 }}>Your data is saved. View your cognitive analysis in <strong style={{ color: u.accent }}>My Patterns</strong>.</p>
                 </div>
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: L.spSm, width: "100%" }}>
-                <button onClick={handleDownloadReport} disabled={isGenerating}
-                  style={{ width: "100%", height: L.btnH, padding: "0 20px", borderRadius: R.md, border: "none", background: isGenerating ? u.fill : u.grad, color: isGenerating ? u.text3 : "#fff", fontFamily: L.font, fontSize: L.fsSm, fontWeight: L.fwSemi, cursor: isGenerating ? "wait" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "all .2s" }}>
-                  <span>{isGenerating ? "⏳" : "⬇"}</span>
-                  <span>{isGenerating ? reportStatus : "Download My Report"}</span>
-                </button>
-                {isGenerating && <div style={{ fontSize: L.fsXs, color: u.text3, textAlign: "center" }}>Generating PDF — this takes ~15 seconds</div>}
-                <div style={{ textAlign: "center" }}><Badge u={u} color={u.green}>Locked — 1 attempt only</Badge></div>
-              </div>
+              <Badge u={u} color={u.green}>Locked — 1 attempt only</Badge>
             </>
           ) : (
             <>
@@ -3275,7 +3280,7 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial }) {
           <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: L.spMd, marginBottom: 20 }}>
             <Card u={u} style={{ padding: L.spLg, display: "flex", flexDirection: "column", alignItems: "center" }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Cognitive Profile</div>
-              <Radar u={u} dims={[{ l:"Attention", v:stats.cog.attention }, { l:"Inhibition", v:stats.cog.inhibition }, { l:"Analysis", v:stats.cog.analysis }, { l:"Reading", v:stats.cog.reading }, { l:"Decision", v:stats.cog.decision }, { l:"Precision", v:stats.cog.precision }, { l:"Memory", v:stats.cog.memory }, { l:"Navigation", v:stats.cog.navigation }]} size={160} />
+              <Radar u={u} dims={[{ l:"Speed", v:stats.cog.speed }, { l:"Accuracy", v:stats.cog.accuracy }, { l:"Memory", v:stats.cog.memory }, { l:"Inhibition", v:stats.cog.inhibition }, { l:"Pattern", v:stats.cog.pattern }, { l:"Arithmetic", v:stats.cog.arithmetic }, { l:"Attention", v:stats.cog.attention }, { l:"Processing", v:stats.cog.processing }]} size={160} />
             </Card>
             <Card u={u} style={{ padding: L.spLg }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spLg }}>Dark vs Light Comparison</div>
@@ -3318,6 +3323,7 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial }) {
               ) : null}
             </Card>
           </div>
+          <Btn u={u} v="ghost" onClick={onProfile} sm>View Full Pattern Analysis with AI Insights →</Btn>
         </>
       ) : (
         <Card u={u} style={{ padding: L.spXl, textAlign: "center" }}>
@@ -3367,11 +3373,6 @@ const ThemeToggle = ({ uiDark, onToggle, u }) => (
 );
 
 // ─── SHARED LAYOUT COMPONENTS ────────────────────────────────────────────────────
-const Wrap = ({ children }) => (
-  <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", padding:`${L.sp2Xl}px ${L.spLg}px` }}>
-    <div style={{ width:"100%", maxWidth:620 }}>{children}</div>
-  </div>
-);
 const SectionHdr = ({ eyebrow, title, sub, action, u }) => (
   <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:24, flexWrap:"wrap", gap:12 }}>
     <div>
@@ -3518,7 +3519,6 @@ function AnalysisTab({ u, users }) {
     { k:"fa",     l:"Fatigue" },
     { k:"sa",     l:"Satisfaction" },
   ];
-
 
   return (
     <div className="au" style={{ fontFamily: L.font }}>
@@ -3829,19 +3829,87 @@ function AnalysisTab({ u, users }) {
         </div>
       </Card>
 
-      {/* ── AI Academic Interpretation ── */}
-      <Card u={u} style={{ padding: L.spLg, background: u.gradSoft, border: `1px solid ${u.accent}20` }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: L.spMd, gap: 16, flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontSize: L.fsXs, color: u.accent, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>✦ AI Academic Interpretation</div>
-            <div style={{ fontSize: L.fsSm, color: u.text2, maxWidth: 440 }}>Generates publication-quality results prose with APA reporting, associative language, effect size citations, and a limitations section.</div>
-          </div>
+    </div>
+  );
+}
+// ─── LIVE MONITOR TAB ────────────────────────────────────────────────────────────
+function LiveMonitorTab({ u, users }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const iv = setInterval(() => setTick(t=>t+1), 5000); return () => clearInterval(iv); }, []);
+  const todayStr = new Date().toDateString();
+  const all = db.all().filter(x => x.role !== "admin");
+  const activeToday    = all.filter(usr => (usr.experiments||[]).some(e => e.ts && new Date(e.ts).toDateString() === todayStr));
+  const inProgress     = activeToday.filter(usr => !usr.completed && (usr.experiments||[]).length < 2);
+  const completedToday = activeToday.filter(usr =>  usr.completed || (usr.experiments||[]).length >= 2);
+  const updated = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+
+  return (
+    <div className="au" style={{ fontFamily:L.font }}>
+      <SectionHdr u={u} eyebrow="Real-time" title="Live Monitor"
+        action={<div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 14px", borderRadius:R.pill, background:`${u.green}12`, border:`1px solid ${u.green}28` }}><div style={{ width:7, height:7, borderRadius:"50%", background:u.green }} /><span style={{ fontSize:L.fsXs, color:u.green, fontWeight:L.fwSemi }}>Live · {updated}</span></div>}
+      />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:L.spMd, marginBottom:24 }}>
+        {[{l:"Active Today",v:activeToday.length,c:u.accent,i:"👥"},{l:"In Progress",v:inProgress.length,c:u.orange,i:"⚡"},{l:"Completed",v:completedToday.length,c:u.green,i:"✓"},{l:"Sessions",v:all.flatMap(x=>(x.experiments||[]).filter(e=>e.ts&&new Date(e.ts).toDateString()===todayStr)).length,c:u.teal,i:"📋"}].map(({l,v,c,i})=>(
+          <Card key={l} u={u} style={{ padding:L.spMd, position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:c }} />
+            <div style={{ fontSize:20, marginBottom:L.spSm }}>{i}</div>
+            <div style={{ fontSize:30, fontWeight:L.fwBlack, color:c, fontFamily:L.mono, lineHeight:1 }}>{v}</div>
+            <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:4 }}>{l}</div>
+          </Card>
+        ))}
+      </div>
+      {inProgress.length > 0 && <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}><div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>⚡ In Progress</div>{inProgress.map(usr=><div key={usr.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, marginBottom:8 }}><div style={{ width:36,height:36,borderRadius:10,background:u.grad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:L.fwBold,color:"#fff",flexShrink:0 }}>{usr.name.slice(0,2).toUpperCase()}</div><div style={{ flex:1 }}><div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{usr.name}</div><div style={{ fontSize:L.fsXs, color:u.text3 }}>Phase {(usr.experiments||[]).length+1} of 2</div></div><span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.orange}18`, color:u.orange, border:`1px solid ${u.orange}30` }}>Active</span></div>)}</Card>}
+      {completedToday.length > 0 && <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}><div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>✓ Completed Today</div>{completedToday.map(usr=><div key={usr.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, marginBottom:8 }}><div style={{ width:36,height:36,borderRadius:10,background:u.gradSoft,border:`1px solid ${u.green}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:L.fwBold,color:u.green,flexShrink:0 }}>{usr.name.slice(0,2).toUpperCase()}</div><div style={{ flex:1 }}><div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{usr.name}</div><div style={{ fontSize:L.fsXs, color:u.text3 }}>Preferred: {usr.pref||"—"}</div></div><span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.green}18`, color:u.green, border:`1px solid ${u.green}28` }}>Done</span></div>)}</Card>}
+      {activeToday.length === 0 && <EmptyState u={u} icon="👁" title="No activity today" body="Participants who start or complete the experiment today appear here." />}
+    </div>
+  );
+}
+
+// ─── SETTINGS TAB ────────────────────────────────────────────────────────────────
+function SettingsTab({ u }) {
+  const [s, setS] = useState(() => loadSettings());
+  const [saved, setSaved] = useState(false);
+  const save = () => { saveSettings(s); applySettings(); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const reset = () => { saveSettings(DEFAULT_SETTINGS); setS({ ...DEFAULT_SETTINGS }); applySettings(); };
+  const inp = { width:"100%", padding:"9px 12px", borderRadius:R.md, border:`1px solid ${u.border}`, background:u.fill, color:u.text, fontFamily:L.font, fontSize:L.fsSm, outline:"none", boxSizing:"border-box" };
+
+  return (
+    <div className="au" style={{ fontFamily:L.font }}>
+      <SectionHdr u={u} eyebrow="Administration" title="Study Settings"
+        sub="Configure trial counts and study metadata."
+        action={<div style={{ display:"flex", gap:L.spSm }}><Btn u={u} v="ghost" sm onClick={reset}>Reset</Btn><Btn u={u} v="grad" sm onClick={save}>{saved ? "✓ Saved" : "Save"}</Btn></div>}
+      />
+      <Card u={u} style={{ padding:L.spLg, marginBottom:20 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>Study Information</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:L.spMd }}>
+          {[{k:"studyTitle",l:"Study Title",ph:"Dark vs Light Mode Study"},{k:"researcher",l:"Researcher",ph:"Your name"},{k:"institution",l:"Institution",ph:"University / Lab"},{k:"contactEmail",l:"Contact Email",ph:"email@university.edu"}].map(({k,l,ph})=>(
+            <div key={k}><div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:6, fontWeight:L.fwSemi }}>{l}</div><input value={s[k]||""} onChange={e=>setS(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={inp} /></div>
+          ))}
         </div>
-        {interp && <div style={{ fontSize: L.fsBase, color: u.text2, lineHeight: 1.85, whiteSpace: "pre-wrap", borderTop: `1px solid ${u.border}`, paddingTop: L.spMd }}>{interp}</div>}
+      </Card>
+      <Card u={u} style={{ padding:L.spLg, marginBottom:20 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:4 }}>Trial Counts Per Task</div>
+        <div style={{ fontSize:L.fsSm, color:u.text2, marginBottom:L.spMd }}>Adjust the number of trials per task. Changes apply to new sessions.</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:L.spSm }}>
+          {CFG.tasks.map(tid => {
+            const v = s.trialCounts?.[tid] ?? CFG.TN[tid] ?? 2;
+            return (
+              <div key={tid} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:`${L.spSm}px ${L.spMd}px`, background:u.fill, borderRadius:R.md }}>
+                <div style={{ flex:1, fontSize:L.fsSm, color:u.text }}>{CFG.TL[tid]||tid}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:L.spSm }}>
+                  <button onClick={()=>setS(p=>({...p,trialCounts:{...(p.trialCounts||{}),[tid]:Math.max(1,(p.trialCounts?.[tid]??v)-1)}}))} style={{ width:28,height:28,borderRadius:R.sm,border:`1px solid ${u.border}`,background:u.bg,color:u.text,cursor:"pointer",fontSize:16 }}>−</button>
+                  <span style={{ width:28,textAlign:"center",fontSize:L.fsBase,fontWeight:L.fwBold,color:u.text,fontFamily:L.mono }}>{v}</span>
+                  <button onClick={()=>setS(p=>({...p,trialCounts:{...(p.trialCounts||{}),[tid]:Math.min(20,(p.trialCounts?.[tid]??v)+1)}}))} style={{ width:28,height:28,borderRadius:R.sm,border:`1px solid ${u.border}`,background:u.bg,color:u.text,cursor:"pointer",fontSize:16 }}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </Card>
     </div>
   );
 }
+
 // ─── LIMITATIONS TAB ─────────────────────────────────────────────────────────────
 function LimitationsTab({ u }) {
   const [active, setActive] = useState(null);
@@ -3962,66 +4030,36 @@ function LimitationsTab({ u }) {
 }
 
 
-// ─── ADMIN ERROR BOUNDARY ────────────────────────────────────────────────────────
-class TabErrorBoundary extends React.Component {
-  constructor(props) { super(props); this.state = { error: null }; }
-  static getDerivedStateFromError(e) { return { error: e }; }
-  render() {
-    if (this.state.error) {
-      const u = this.props.u;
-      return (
-        <div style={{ padding:24, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
-          <div style={{ padding:20, borderRadius:12, background:`${u?.red||"#dc2626"}10`, border:`1px solid ${u?.red||"#dc2626"}30` }}>
-            <div style={{ fontSize:13, fontWeight:700, color:u?.red||"#dc2626", marginBottom:8 }}>⚠ Tab error — check console for details</div>
-            <code style={{ fontSize:11, color:u?.text2||"#64748b", display:"block", whiteSpace:"pre-wrap" }}>{this.state.error?.message}</code>
-            <button onClick={()=>this.setState({error:null})} style={{ marginTop:12, padding:"6px 14px", borderRadius:8, border:"none", background:u?.accent||"#4d8ef0", color:"#fff", cursor:"pointer", fontFamily:"inherit", fontSize:12 }}>Retry</button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
 // ─── PARTICIPANT HEATMAP ─────────────────────────────────────────────────────────
 function ParticipantHeatmap({ u, users }) {
   const complete = users.filter(usr => (usr.experiments || []).length >= 2);
   if (complete.length < 2) return null;
-  const TASKS = CFG.tasks;
   return (
     <Card u={u} style={{ padding:0, marginBottom:20, overflow:"hidden" }}>
       <div style={{ padding:`${L.spMd}px ${L.spLg}px`, borderBottom:`1px solid ${u.border}` }}>
-        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Participant × Task Accuracy Heatmap</div>
-        <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Combined dark + light accuracy per participant · Red → Yellow → Green</div>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Participant × Task Accuracy</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Combined dark + light accuracy · Red → Yellow → Green</div>
       </div>
       <div style={{ overflowX:"auto" }}>
         <table style={{ width:"100%", borderCollapse:"collapse", fontFamily:L.font }}>
-          <thead>
-            <tr>
-              <th style={{ padding:"8px 12px", fontSize:L.fsXs, color:u.text3, textAlign:"left", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi, minWidth:100 }}>Participant</th>
-              {TASKS.map(tid => <th key={tid} style={{ padding:"8px 6px", fontSize:L.fsXs, color:u.text3, textAlign:"center", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi, whiteSpace:"nowrap" }}>{(CFG.TL[tid]||tid).split(" ")[0]}</th>)}
-              <th style={{ padding:"8px 12px", fontSize:L.fsXs, color:u.text3, textAlign:"center", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi }}>Avg</th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th style={{ padding:"8px 12px", fontSize:L.fsXs, color:u.text3, textAlign:"left", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi, minWidth:100 }}>Participant</th>
+            {CFG.tasks.map(tid=><th key={tid} style={{ padding:"8px 6px", fontSize:L.fsXs, color:u.text3, textAlign:"center", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi, whiteSpace:"nowrap" }}>{(CFG.TL[tid]||tid).split(" ")[0]}</th>)}
+            <th style={{ padding:"8px 12px", fontSize:L.fsXs, color:u.text3, textAlign:"center", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi }}>Avg</th>
+          </tr></thead>
           <tbody>
-            {complete.sort((a,b) => { const sa=computeStats(a), sb=computeStats(b); return (sb?.accDk+sb?.accLt||0)-(sa?.accDk+sa?.accLt||0); }).map((usr, ri) => {
-              const stats = computeStats(usr);
-              const accs = TASKS.map(tid => stats?.tperf[tid]?.acc ?? null);
-              const valid = accs.filter(v=>v!=null);
-              const avg2 = valid.length ? valid.reduce((a,b)=>a+b,0)/valid.length : null;
-              const hsl = v => v!=null ? `hsl(${Math.round(v*120)},60%,44%)` : u.text3;
-              const bg  = v => v!=null ? `hsl(${Math.round(v*120)},60%,44%,0.15)` : "transparent";
+            {complete.map((usr,ri)=>{
+              const stats=computeStats(usr);
+              const accs=CFG.tasks.map(tid=>stats?.tperf[tid]?.acc??null);
+              const valid=accs.filter(v=>v!=null);
+              const avg2=valid.length?valid.reduce((a,b)=>a+b,0)/valid.length:null;
+              const hsl=v=>v!=null?`hsl(${Math.round(v*120)},60%,44%)`:u.text3;
+              const bg=v=>v!=null?`hsla(${Math.round(v*120)},60%,44%,0.15)`:"transparent";
               return (
                 <tr key={usr.id} style={{ borderBottom:`1px solid ${u.border}` }}>
                   <td style={{ padding:"7px 12px", fontSize:L.fsSm, color:u.text }}>{usr.name.split(" ")[0]}</td>
-                  {accs.map((acc, ci) => (
-                    <td key={ci} style={{ padding:"7px 6px", textAlign:"center", background:bg(acc) }}>
-                      <span style={{ fontSize:L.fsXs, fontWeight:L.fwSemi, color:hsl(acc), fontFamily:L.mono }}>{acc!=null?Math.round(acc*100)+"%":"—"}</span>
-                    </td>
-                  ))}
-                  <td style={{ padding:"7px 12px", textAlign:"center", fontWeight:L.fwBold, background:bg(avg2) }}>
-                    <span style={{ fontSize:L.fsSm, color:hsl(avg2), fontFamily:L.mono }}>{avg2!=null?Math.round(avg2*100)+"%":"—"}</span>
-                  </td>
+                  {accs.map((acc,ci)=><td key={ci} style={{ padding:"7px 6px", textAlign:"center", background:bg(acc) }}><span style={{ fontSize:L.fsXs, fontWeight:L.fwSemi, color:hsl(acc), fontFamily:L.mono }}>{acc!=null?Math.round(acc*100)+"%":"—"}</span></td>)}
+                  <td style={{ padding:"7px 12px", textAlign:"center", fontWeight:L.fwBold, background:bg(avg2) }}><span style={{ fontSize:L.fsSm, color:hsl(avg2), fontFamily:L.mono }}>{avg2!=null?Math.round(avg2*100)+"%":"—"}</span></td>
                 </tr>
               );
             })}
@@ -4032,103 +4070,49 @@ function ParticipantHeatmap({ u, users }) {
   );
 }
 
-// ─── LIVE MONITOR TAB ────────────────────────────────────────────────────────────
-function LiveMonitorTab({ u, users }) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => { const iv = setInterval(() => setTick(t=>t+1), 5000); return () => clearInterval(iv); }, []);
-
-  const todayStr = new Date().toDateString();
-  const all = db.all().filter(x => x.role !== "admin");
-  const activeToday    = all.filter(usr => (usr.experiments||[]).some(e => e.ts && new Date(e.ts).toDateString() === todayStr));
-  const inProgress     = activeToday.filter(usr => !usr.completed && (usr.experiments||[]).length < 2);
-  const completedToday = activeToday.filter(usr =>  usr.completed || (usr.experiments||[]).length >= 2);
-  const todaySessions  = all.flatMap(usr => (usr.experiments||[]).filter(e => e.ts && new Date(e.ts).toDateString() === todayStr));
-  const updated = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
-
-  const PhaseBar = ({ usr }) => {
-    const n = (usr.experiments||[]).length;
-    return (
-      <div style={{ display:"flex", gap:4, alignItems:"center" }}>
-        {[1,2].map(p => <div key={p} style={{ width:12, height:12, borderRadius:3, background:p<=n?u.green:p===n+1?u.orange:u.border }} />)}
-      </div>
-    );
-  };
+// ─── REPORT SCREEN ───────────────────────────────────────────────────────────────
+function ReportScreen({ user, u, onBack }) {
+  const stats = useMemo(() => computeStats(user), [user]);
+  const exps = user.experiments || [];
+  const nasa = exps.find(e => e.nasaTLX)?.nasaTLX;
+  const dkC  = exps.find(e => e.theme === "dark")?.comfort;
+  const ltC  = exps.find(e => e.theme === "light")?.comfort;
+  const dem  = user.dem || {};
+  const winner = stats?.betterTheme;
+  const wCol = winner === "dark" ? "#3B82F6" : "#D97706";
+  const pct = v => v != null ? Math.round(v * 100) + "%" : "—";
+  const ms  = v => v != null ? Math.round(v) + " ms" : "—";
+  const dateStr = user.completedAt ? new Date(user.completedAt).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" }) : new Date().toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" });
+  const Bar = ({ value, max=1, color="#3B82F6" }) => <div style={{ height:7, background:"#E2E8F0", borderRadius:99, overflow:"hidden" }}><div style={{ height:"100%", width:`${Math.round(Math.min(1,value/max)*100)}%`, background:color, borderRadius:99 }} /></div>;
+  const NASA_DIMS = [{ k:"md", l:"Mental Demand" }, { k:"pd", l:"Physical Demand" }, { k:"td", l:"Temporal Demand" }, { k:"pe", l:"Performance" }, { k:"ef", l:"Effort" }, { k:"fr", l:"Frustration" }];
+  const COMFORT_DIMS = [{ key:"visualComfort", label:"Visual Comfort", higherBetter:true }, { key:"eyeStrain", label:"Eye Strain", higherBetter:false }, { key:"fatigue", label:"Mental Fatigue", higherBetter:false }, { key:"satisfaction", label:"Satisfaction", higherBetter:true }];
 
   return (
-    <div className="au" style={{ fontFamily:L.font }}>
-      <SectionHdr u={u} eyebrow="Real-time" title="Live Monitor"
-        action={
-          <div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 14px", borderRadius:R.pill, background:`${u.green}12`, border:`1px solid ${u.green}28` }}>
-            <div className="live-dot" style={{ width:7, height:7, borderRadius:"50%", background:u.green }} />
-            <span style={{ fontSize:L.fsXs, color:u.green, fontWeight:L.fwSemi }}>Live · {updated}</span>
-          </div>
-        }
-      />
-
-      {/* Stats row */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:L.spMd, marginBottom:24 }}>
-        {[
-          { l:"Active Today",   v:activeToday.length,    c:u.accent,  i:"👥" },
-          { l:"In Progress",    v:inProgress.length,     c:u.orange,  i:"⚡" },
-          { l:"Completed",      v:completedToday.length, c:u.green,   i:"✓"  },
-          { l:"Sessions Today", v:todaySessions.length,  c:u.teal,    i:"📋" },
-        ].map(({ l, v, c, i }) => (
-          <Card key={l} u={u} style={{ padding:L.spMd, position:"relative", overflow:"hidden" }} className="hover-lift">
-            <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:c }} />
-            <div style={{ fontSize:20, marginBottom:L.spSm }}>{i}</div>
-            <div style={{ fontSize:30, fontWeight:L.fwBlack, color:c, fontFamily:L.mono, lineHeight:1 }}>{v}</div>
-            <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:4 }}>{l}</div>
-          </Card>
-        ))}
+    <div style={{ background:"#F8FAFC", minHeight:"100vh" }}>
+      <div className="no-print" style={{ position:"sticky", top:0, zIndex:100, background:"#fff", borderBottom:"1px solid #E2E8F0", padding:"12px 24px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <button onClick={onBack} style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#64748B" }}>← Back</button>
+        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 20px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:600 }}>🖨 Print / Save PDF</button>
       </div>
-
-      {/* In progress */}
-      {inProgress.length > 0 && (
-        <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
-          <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>⚡ Currently in Progress</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:L.spSm }}>
-            {inProgress.map(usr => (
-              <div key={usr.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, border:`1px solid ${u.orange}22` }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:u.grad, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:L.fwBold, color:"#fff", flexShrink:0 }}>{usr.name.slice(0,2).toUpperCase()}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{usr.name}</div>
-                  <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:2 }}>Phase {(usr.experiments||[]).length+1} of 2 · {usr.orderGroup||"—"} group · {(usr.experiments||[]).length > 0 ? "Phase 1 done":"Starting"}</div>
-                </div>
-                <PhaseBar usr={usr} />
-                <span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.orange}18`, color:u.orange, border:`1px solid ${u.orange}30`, fontWeight:L.fwSemi }}>In Progress</span>
-              </div>
-            ))}
+      <div id="report-root" style={{ maxWidth:760, margin:"0 auto", padding:"40px 48px 60px", background:"#fff", fontFamily:"'DM Sans',system-ui,sans-serif", color:"#0F172A" }}>
+        <div style={{ borderBottom:"3px solid #1D4ED8", paddingBottom:20, marginBottom:28 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:"#3B82F6", letterSpacing:2, textTransform:"uppercase", marginBottom:8 }}>CogBench · Cognitive Performance Report</div>
+          <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+            <div><div style={{ fontSize:26, fontWeight:800, letterSpacing:-.5 }}>{user.name}</div><div style={{ fontSize:13, color:"#64748B", marginTop:4 }}>{user.orderGroup === "DL" ? "Dark → Light" : "Light → Dark"} · Completed {dateStr}</div></div>
           </div>
-        </Card>
-      )}
-
-      {/* Completed today */}
-      {completedToday.length > 0 && (
-        <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
-          <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>✓ Completed Today</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:L.spSm }}>
-            {completedToday.map(usr => (
-              <div key={usr.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, border:`1px solid ${u.green}22` }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:u.gradSoft, border:`1px solid ${u.green}28`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:L.fwBold, color:u.green, flexShrink:0 }}>{usr.name.slice(0,2).toUpperCase()}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{usr.name}</div>
-                  <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:2 }}>Preferred: {usr.pref||"Not recorded"} · {usr.orderGroup||"—"} group</div>
-                </div>
-                <PhaseBar usr={usr} />
-                <span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.green}18`, color:u.green, border:`1px solid ${u.green}28`, fontWeight:L.fwSemi }}>Complete</span>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {activeToday.length === 0 && (
-        <Card u={u} style={{ padding:L.spXl, textAlign:"center" }}>
-          <div style={{ fontSize:36, marginBottom:12 }}>👁</div>
-          <h3 style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:u.text, margin:"0 0 8px" }}>No activity today</h3>
-          <p style={{ color:u.text2, fontSize:L.fsSm }}>Participants who start or complete the experiment today appear here in real-time.</p>
-        </Card>
-      )}
+        </div>
+        {winner && <div style={{ padding:"16px 20px", borderRadius:10, background:winner==="dark"?"#EFF6FF":"#FFFBEB", border:`2px solid ${wCol}`, marginBottom:28, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
+          <div><div style={{ fontSize:10, fontWeight:700, color:wCol, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Recommended Interface</div><div style={{ fontSize:20, fontWeight:800, color:wCol }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</div></div>
+          <div style={{ display:"flex", gap:20 }}><div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:800, color:"#3B82F6" }}>{pct(stats?.accDk)}</div><div style={{ fontSize:12, color:"#64748B" }}>🌙 Dark</div></div><div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:800, color:"#D97706" }}>{pct(stats?.accLt)}</div><div style={{ fontSize:12, color:"#64748B" }}>☀️ Light</div></div></div>
+        </div>}
+        <div style={{ fontSize:11, fontWeight:700, color:"#1E3A8A", letterSpacing:.5, textTransform:"uppercase", margin:"24px 0 10px", display:"flex", alignItems:"center", gap:8 }}><div style={{ width:3, height:16, background:"#3B82F6", borderRadius:2 }} />Performance</div>
+        {stats && <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, marginBottom:24 }}>
+          <thead><tr style={{ background:"#1E3A8A", color:"#fff" }}>{["Task","Overall","Dark","Light",""].map(h=><th key={h} style={{ padding:"8px 10px", textAlign:"left", fontWeight:600, fontSize:11 }}>{h}</th>)}</tr></thead>
+          <tbody>{CFG.tasks.map((tid,i)=>{ const tp=stats.tperf[tid]; if(!tp||!tp.n) return null; const acc=tp.acc??0; const col=acc>=0.8?"#16A34A":acc>=0.6?"#EA580C":"#DC2626"; return <tr key={tid} style={{ background:i%2===0?"#fff":"#F8FAFC" }}><td style={{ padding:"8px 10px", fontWeight:500 }}>{CFG.TL[tid]||tid}</td><td style={{ padding:"8px 10px", fontWeight:700, color:col }}>{pct(acc)}</td><td style={{ padding:"8px 10px", color:"#3B82F6" }}>{pct(tp.dk?.acc)}</td><td style={{ padding:"8px 10px", color:"#D97706" }}>{pct(tp.lt?.acc)}</td><td style={{ padding:"8px 10px", width:100 }}><Bar value={acc} color={col} /></td></tr>; })}</tbody>
+        </table>}
+        {nasa && <><div style={{ fontSize:11, fontWeight:700, color:"#1E3A8A", letterSpacing:.5, textTransform:"uppercase", margin:"24px 0 10px", display:"flex", alignItems:"center", gap:8 }}><div style={{ width:3, height:16, background:"#3B82F6", borderRadius:2 }} />Workload (NASA-TLX)</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:24 }}>{NASA_DIMS.map(({k,l})=>{ const v=nasa[k]; if(!v) return null; const pct2=v/20; const col=pct2<0.35?"#16A34A":pct2<0.65?"#EA580C":"#DC2626"; return <div key={k} style={{ padding:"10px 12px", background:"#F8FAFC", borderRadius:8, border:"1px solid #E2E8F0" }}><div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}><span style={{ fontSize:11, color:"#64748B" }}>{l}</span><span style={{ fontWeight:700, color:col, fontSize:13 }}>{v}/20</span></div><Bar value={v} max={20} color={col} /></div>; })}</div></>}
+        <div style={{ marginTop:48, paddingTop:16, borderTop:"2px solid #E2E8F0", display:"flex", justifyContent:"space-between", fontSize:12, color:"#64748B" }}><span>CogBench · Cognitive Performance Report</span><span>{user.name} · {dateStr}</span></div>
+      </div>
     </div>
   );
 }
@@ -4276,7 +4260,6 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
         </div>
       )}
       <div style={{ flex:1, overflowY:"auto", padding:mobile?`${L.spMd}px 14px`:`${L.spXl}px ${L.spLg}px`, maxWidth:mobile?"100%":860, width:"100%" }}>
-        <TabErrorBoundary u={u}>
         {tab === "overview" && (
           <div className="au">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
@@ -4294,7 +4277,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: L.spMd }}>
               <Card u={u} style={{ padding: L.spLg }}>
                 <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Theme Comparison</div>
-                {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:String(Math.round(avg(dkT.map(t => t.err||0)))), li:String(Math.round(avg(ltT.map(t => t.err||0)))) }].map(({ l, d, li }) => (
+                {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:avg(dkT.map(t => t.err||0)).toFixed(2), li:avg(ltT.map(t => t.err||0)).toFixed(2) }].map(({ l, d, li }) => (
                   <div key={l} style={{ display: "flex", alignItems: "center", gap: L.spMd, marginBottom: 10 }}>
                     <span style={{ fontSize: L.fsSm, color: u.text3, width: 80, flexShrink: 0 }}>{l}</span>
                     <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -4411,7 +4394,6 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
         {tab === "stats_engine" && <AnalysisTab u={u} users={users} />}
         {tab === "limitations" && <LimitationsTab u={u} />}
         {tab === "settings" && <SettingsTab u={u} />}
-        </TabErrorBoundary>
       </div>
     </div>
   );
@@ -4572,278 +4554,6 @@ function DebriefSc({ u, user, onHome }) {
 }
 
 // ─── ROOT APP ─────────────────────────────────────────────────────────────────────
-// ─── PARTICIPANT PDF REPORT ───────────────────────────────────────────────────────
-// ─── REPORT SCREEN ───────────────────────────────────────────────────────────────
-function ReportScreen({ user, u, onBack }) {
-  const stats = useMemo(() => computeStats(user), [user]);
-  const exps  = user.experiments || [];
-  const nasa  = exps.find(e => e.nasaTLX)?.nasaTLX;
-  const dkC   = exps.find(e => e.theme === "dark")?.comfort;
-  const ltC   = exps.find(e => e.theme === "light")?.comfort;
-  const dem   = user.dem || {};
-  const winner= stats?.betterTheme;
-  const wCol  = winner === "dark" ? "#3B82F6" : "#D97706";
-
-  const pct = v => v != null ? Math.round(v * 100) + "%" : "—";
-  const ms  = v => v != null ? Math.round(v) + " ms" : "—";
-  const dateStr = user.completedAt
-    ? new Date(user.completedAt).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" })
-    : new Date().toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" });
-
-  const Bar = ({ value, max=1, color="#3B82F6" }) => (
-    <div style={{ height:7, background:"#E2E8F0", borderRadius:99, overflow:"hidden", width:"100%" }}>
-      <div style={{ height:"100%", width:`${Math.round(Math.min(1,value/max)*100)}%`, background:color, borderRadius:99 }} />
-    </div>
-  );
-
-  const COMFORT_DIMS = [
-    { key:"visualComfort", label:"Visual Comfort",  higherBetter:true  },
-    { key:"eyeStrain",     label:"Eye Strain",       higherBetter:false },
-    { key:"fatigue",       label:"Mental Fatigue",   higherBetter:false },
-    { key:"satisfaction",  label:"Satisfaction",     higherBetter:true  },
-  ];
-
-  const NASA_DIMS = [
-    { k:"md", l:"Mental Demand"   }, { k:"pd", l:"Physical Demand" },
-    { k:"td", l:"Temporal Demand" }, { k:"pe", l:"Performance"     },
-    { k:"ef", l:"Effort"          }, { k:"fr", l:"Frustration"     },
-  ];
-
-  const s = { /* shared print + screen styles */
-    page:    { fontFamily:"'DM Sans',system-ui,sans-serif", color:"#0F172A", background:"#fff", maxWidth:760, margin:"0 auto", padding:"48px 56px 64px" },
-    h1:      { fontSize:26, fontWeight:800, color:"#0F172A", margin:"0 0 4px", letterSpacing:-.5 },
-    h2:      { fontSize:14, fontWeight:700, color:"#1E3A8A", margin:"32px 0 10px", letterSpacing:.5, textTransform:"uppercase", display:"flex", alignItems:"center", gap:8 },
-    label:   { fontSize:11, fontWeight:600, color:"#64748B", letterSpacing:.5, textTransform:"uppercase" },
-    value:   { fontSize:13, fontWeight:600, color:"#0F172A" },
-    muted:   { fontSize:12, color:"#64748B" },
-    divider: { border:"none", borderTop:"1px solid #E2E8F0", margin:"24px 0" },
-  };
-
-  const SectionHead = ({ children }) => (
-    <div style={s.h2}>
-      <div style={{ width:3, height:16, background:"#3B82F6", borderRadius:2, flexShrink:0 }} />
-      {children}
-    </div>
-  );
-
-  return (
-    <div style={{ background:"#F8FAFC", minHeight:"100vh" }}>
-
-      {/* Controls — hidden when printing */}
-      <div className="no-print" style={{ position:"sticky", top:0, zIndex:100, background:"#fff", borderBottom:"1px solid #E2E8F0", display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 24px" }}>
-        <button onClick={onBack} style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#64748B" }}>
-          ← Back
-        </button>
-        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 20px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:600 }}>
-          🖨 Print / Save as PDF
-        </button>
-      </div>
-
-      {/* Report */}
-      <div id="report-root" style={s.page}>
-
-        {/* ── Header ── */}
-        <div style={{ borderBottom:"3px solid #1D4ED8", paddingBottom:20, marginBottom:28 }}>
-          <div style={{ ...s.label, color:"#3B82F6", marginBottom:8 }}>CogBench · Cognitive Performance Report</div>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:12 }}>
-            <div>
-              <h1 style={s.h1}>{user.name}</h1>
-              <div style={s.muted}>
-                {user.orderGroup === "DL" ? "Dark → Light" : "Light → Dark"} &nbsp;·&nbsp; Completed {dateStr}
-              </div>
-            </div>
-            <div style={{ textAlign:"right" }}>
-              <div style={{ ...s.label, marginBottom:4 }}>Study</div>
-              <div style={{ fontSize:12, fontWeight:600, color:"#0F172A", maxWidth:200 }}>Dark vs Light Mode Interface Comparison</div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── Optimal interface ── */}
-        {winner && (
-          <div style={{ padding:"16px 20px", borderRadius:10, background: winner==="dark"?"#EFF6FF":"#FFFBEB", border:`2px solid ${wCol}`, marginBottom:28, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
-            <div>
-              <div style={{ ...s.label, color:wCol, marginBottom:4 }}>Recommended Interface</div>
-              <div style={{ fontSize:20, fontWeight:800, color:wCol }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</div>
-              <div style={{ ...s.muted, marginTop:3 }}>Based on accuracy, speed, and cognitive load</div>
-            </div>
-            <div style={{ display:"flex", gap:20 }}>
-              <div style={{ textAlign:"center" }}>
-                <div style={{ fontSize:22, fontWeight:800, color:"#3B82F6" }}>{pct(stats?.accDk)}</div>
-                <div style={s.muted}>🌙 Dark</div>
-              </div>
-              <div style={{ textAlign:"center" }}>
-                <div style={{ fontSize:22, fontWeight:800, color:"#D97706" }}>{pct(stats?.accLt)}</div>
-                <div style={s.muted}>☀️ Light</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── Profile ── */}
-        <SectionHead>Participant Profile</SectionHead>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 32px" }}>
-          {[
-            ["Age",            dem.age||"—"],
-            ["Gender",         dem.gender||"—"],
-            ["Education",      dem.edu||"—"],
-            ["Proficiency",    dem.proficiency||"—"],
-            ["Daily Screen Time", dem.screenTime||"—"],
-            ["Dark Mode Habit",dem.darkMode||"—"],
-          ].map(([k,v]) => (
-            <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"6px 0", borderBottom:"1px solid #F1F5F9" }}>
-              <span style={s.label}>{k}</span>
-              <span style={s.value}>{v}</span>
-            </div>
-          ))}
-        </div>
-        {user.pref && user.pref !== "none" && (
-          <div style={{ marginTop:10, padding:"8px 14px", borderRadius:8, background: user.pref==="dark"?"#EFF6FF":"#FFFBEB", border:`1px solid ${user.pref==="dark"?"#BFDBFE":"#FDE68A"}`, display:"flex", justifyContent:"space-between" }}>
-            <span style={s.label}>Self-reported preference</span>
-            <span style={{ fontSize:13, fontWeight:700, color:user.pref==="dark"?"#1D4ED8":"#D97706" }}>{user.pref === "dark" ? "Dark Mode" : "Light Mode"}</span>
-          </div>
-        )}
-
-        <hr style={s.divider} />
-
-        {/* ── Task Performance ── */}
-        {stats && (
-          <>
-            <SectionHead>Task Performance</SectionHead>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-              <thead>
-                <tr style={{ background:"#1E3A8A", color:"#fff" }}>
-                  {["Task","Overall","Dark","Light",""].map(h => (
-                    <th key={h} style={{ padding:"8px 10px", textAlign: h===""?"left":"right", fontWeight:600, fontSize:11, letterSpacing:.3 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {CFG.tasks.map((tid,i) => {
-                  const tp = stats.tperf[tid]; if (!tp||!tp.n) return null;
-                  const acc = tp.acc??0;
-                  const col = acc>=0.8?"#16A34A":acc>=0.6?"#EA580C":"#DC2626";
-                  return (
-                    <tr key={tid} style={{ background:i%2===0?"#fff":"#F8FAFC" }}>
-                      <td style={{ padding:"8px 10px", fontWeight:500 }}>{CFG.TL[tid]||tid}</td>
-                      <td style={{ padding:"8px 10px", textAlign:"right", fontWeight:700, color:col }}>{pct(acc)}</td>
-                      <td style={{ padding:"8px 10px", textAlign:"right", color:"#3B82F6" }}>{pct(tp.dk?.acc)}</td>
-                      <td style={{ padding:"8px 10px", textAlign:"right", color:"#D97706" }}>{pct(tp.lt?.acc)}</td>
-                      <td style={{ padding:"8px 10px", width:100 }}><Bar value={acc} color={col} /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginTop:20 }}>
-              {[
-                { l:"Dark Accuracy",  v:pct(stats.accDk),        c:"#3B82F6" },
-                { l:"Light Accuracy", v:pct(stats.accLt),        c:"#D97706" },
-                { l:"Dark RT",        v:ms(stats.rtDk),          c:"#3B82F6" },
-                { l:"Light RT",       v:ms(stats.rtLt),          c:"#D97706" },
-                { l:"Mental Demand",  v:stats.efDk?.toFixed(1)||"—", c:"#6366F1" },
-              ].map(({l,v,c}) => (
-                <div key={l} style={{ padding:"12px 14px", border:"1px solid #E2E8F0", borderRadius:8, background:"#F8FAFC" }}>
-                  <div style={s.label}>{l}</div>
-                  <div style={{ fontSize:18, fontWeight:800, color:c, marginTop:4 }}>{v}</div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        <hr style={s.divider} />
-
-        {/* ── Visual Comfort ── */}
-        {(dkC||ltC) && (
-          <>
-            <SectionHead>Visual Comfort Survey</SectionHead>
-            <div style={{ ...s.muted, marginBottom:12 }}>Post-phase ratings · Scale 1 (low) → 7 (high)</div>
-            <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
-              <thead>
-                <tr style={{ background:"#1E3A8A", color:"#fff" }}>
-                  {["Dimension","🌙 Dark","☀️ Light","Better"].map(h=>(
-                    <th key={h} style={{ padding:"8px 10px", textAlign:"left", fontWeight:600, fontSize:11 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {COMFORT_DIMS.map(({key,label,higherBetter},i) => {
-                  const dv=dkC?.[key], lv=ltC?.[key];
-                  const dkB=dv!=null&&lv!=null&&(higherBetter?dv>lv:dv<lv);
-                  const ltB=dv!=null&&lv!=null&&(higherBetter?lv>dv:lv<dv);
-                  return (
-                    <tr key={key} style={{ background:i%2===0?"#fff":"#F8FAFC" }}>
-                      <td style={{ padding:"8px 10px", fontWeight:500 }}>{label}</td>
-                      <td style={{ padding:"8px 10px" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <span style={{ fontWeight:700, color:"#3B82F6", minWidth:20 }}>{dv??"-"}</span>
-                          {dv!=null && <Bar value={dv} max={7} color="#3B82F6" />}
-                        </div>
-                      </td>
-                      <td style={{ padding:"8px 10px" }}>
-                        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                          <span style={{ fontWeight:700, color:"#D97706", minWidth:20 }}>{lv??"-"}</span>
-                          {lv!=null && <Bar value={lv} max={7} color="#D97706" />}
-                        </div>
-                      </td>
-                      <td style={{ padding:"8px 10px", fontWeight:700, color:dkB?"#3B82F6":ltB?"#D97706":"#94A3B8" }}>
-                        {dkB?"🌙 Dark":ltB?"☀️ Light":"Equal"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </>
-        )}
-
-        {/* ── NASA TLX ── */}
-        {nasa && (
-          <>
-            <hr style={s.divider} />
-            <SectionHead>Workload Assessment (NASA-TLX)</SectionHead>
-            <div style={{ ...s.muted, marginBottom:16 }}>Subjective workload · Scale 1 (low) → 20 (high)</div>
-            <div style={{ padding:"14px 18px", background:"#EFF6FF", borderRadius:8, border:"1px solid #BFDBFE", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
-              <div>
-                <div style={s.label}>Overall Workload Score</div>
-                <div style={{ fontSize:24, fontWeight:800, color: (nasa.totalScore||0)<7?"#16A34A":(nasa.totalScore||0)<13?"#EA580C":"#DC2626" }}>{nasa.totalScore?.toFixed(1)} <span style={{ fontSize:13, fontWeight:400, color:"#64748B" }}>/ 20</span></div>
-              </div>
-              <div style={{ textAlign:"right", ...s.muted }}>
-                <div>Low &lt; 7 · Moderate 7–13 · High &gt; 13</div>
-              </div>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-              {NASA_DIMS.map(({k,l}) => {
-                const v=nasa[k]; if (!v) return null;
-                const pct2 = v/20;
-                const col = pct2<0.35?"#16A34A":pct2<0.65?"#EA580C":"#DC2626";
-                return (
-                  <div key={k} style={{ padding:"10px 12px", background:"#F8FAFC", borderRadius:8, border:"1px solid #E2E8F0" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
-                      <span style={s.label}>{l}</span>
-                      <span style={{ fontWeight:700, color:col, fontSize:13 }}>{v} / 20</span>
-                    </div>
-                    <Bar value={v} max={20} color={col} />
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-
-        {/* ── Footer ── */}
-        <div style={{ marginTop:48, paddingTop:16, borderTop:"2px solid #E2E8F0", display:"flex", justifyContent:"space-between", ...s.muted }}>
-          <span>CogBench · Cognitive Performance Report</span>
-          <span>{user.name} · {dateStr}</span>
-        </div>
-
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const [screen, setScreen] = useState("auth");
   const [user, setUser] = useState(null);
