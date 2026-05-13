@@ -2765,12 +2765,6 @@ function AuthScreen({ onLogin, u, uiDark, onToggleTheme }) {
             <Btn u={u} v="grad" onClick={tab === "login" ? login : register} full style={{ marginTop: 4 }}>{tab === "login" ? "Sign In →" : "Create Account →"}</Btn>
           </div>
         </Card>
-        <Card u={u} style={{ marginTop: 14, padding: "14px 18px" }}>
-          <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 8, letterSpacing: .5, textTransform: "uppercase" }}>Quick access</div>
-          {[["alex@study.com","pass123","Participant demo"],["admin@study.com","hci2024","Admin panel"]].map(([e, p, l]) => (
-            <button key={e} onClick={() => setForm(f => ({ ...f, email: e, pw: p }))} style={{ display: "block", width: "100%", textAlign: "left", padding: "4px 0", background: "none", border: "none", color: u.accent, fontSize: L.fsSm, cursor: "pointer", fontFamily: L.font }}>{l} → <span style={{ color: u.text3 }}>{e}</span></button>
-          ))}
-        </Card>
       </div>
     </div>
   );
@@ -3474,7 +3468,9 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
           <button onClick={onLogout} style={{ width:"100%", height:32, borderRadius:R.md, border:`1px solid ${u.border}`, background:"transparent", color:u.text3, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm }}>Sign Out</button>
         </div>
       </div>
-      <div style={{ flex:1, overflowY:"auto" }}>{children}</div>
+      <div style={{ flex:1, overflowY:"auto", minWidth:0 }}>
+        <div style={{ maxWidth:960, margin:"0 auto", width:"100%" }}>{children}</div>
+      </div>
     </div>
   );
 }
@@ -4259,7 +4255,8 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
           </div>
         </div>
       )}
-      <div style={{ flex:1, overflowY:"auto", padding:mobile?`${L.spMd}px 14px`:`${L.spXl}px ${L.spLg}px`, maxWidth:mobile?"100%":860, width:"100%" }}>
+      <div style={{ flex:1, overflowY:"auto", minWidth:0 }}>
+        <div style={{ maxWidth:960, margin:"0 auto", padding:mobile?`${L.spMd}px 14px`:`${L.spXl}px ${L.spLg}px`, width:"100%" }}>
         {tab === "overview" && (
           <div className="au">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
@@ -4394,6 +4391,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
         {tab === "stats_engine" && <AnalysisTab u={u} users={users} />}
         {tab === "limitations" && <LimitationsTab u={u} />}
         {tab === "settings" && <SettingsTab u={u} />}
+        </div>
       </div>
     </div>
   );
