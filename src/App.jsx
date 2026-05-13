@@ -22,9 +22,9 @@ input[type=range]{accent-color:#4f8ef7;cursor:pointer;width:100%;}
 .live-dot{animation:livePulse 2s ease-in-out infinite;}
 @media print{
   .no-print{display:none !important;}
-  .print-break{break-after:page;}
-  body{background:white !important;color:#111 !important;}
-  #research-summary{padding:0 !important;}
+  .print-break{break-before:page;}
+  body{background:white !important; margin:0 !important;}
+  #report-root{padding-top:0 !important; max-width:100% !important;}
   *{box-shadow:none !important;}
 }
 /* ── Responsive utilities ── */
@@ -4237,17 +4237,17 @@ function ReportScreen({ user, u, onBack }) {
   ];
 
   return (
-    <div style={{ background:"#F1F5F9", minHeight:"100vh", fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+    <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif", background:"#fff", minHeight:"100vh" }}>
 
-      {/* Top bar — hidden when printing */}
-      <div className="no-print" style={{ position:"sticky", top:0, zIndex:100, background:"#fff", borderBottom:"1px solid #E2E8F0", padding:"12px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
-        <button onClick={onBack} style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#64748B" }}>← Back to Dashboard</button>
-        <div style={{ fontSize:13, color:"#94A3B8" }}>Scroll to preview · Print to save as PDF</div>
-        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 22px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:700, letterSpacing:.2 }}>🖨 Save as PDF</button>
+      {/* Floating action bar — hidden when printing */}
+      <div className="no-print" style={{ position:"fixed", top:0, left:0, right:0, zIndex:100, background:"rgba(255,255,255,0.95)", backdropFilter:"blur(8px)", borderBottom:"1px solid #E2E8F0", padding:"10px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+        <button onClick={onBack} style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#64748B" }}>← Back</button>
+        <span style={{ fontSize:12, color:"#94A3B8" }}>This is your report — what you see is what prints</span>
+        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 22px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:700 }}>🖨 Save as PDF</button>
       </div>
 
-      {/* Report */}
-      <div id="report-root" style={{ maxWidth:800, margin:"0 auto", background:"#fff", boxShadow:"0 4px 40px rgba(0,0,0,0.08)" }}>
+      {/* Report — exactly as it prints */}
+      <div id="report-root" style={{ maxWidth:800, margin:"0 auto", paddingTop:60 }}>
 
         {/* ── Cover header ── */}
         <div style={{ background:"linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)", padding:"48px 56px 40px", color:"#fff" }}>
