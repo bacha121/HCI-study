@@ -3443,7 +3443,7 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
           <div style={{ fontSize:L.fsXs, color:u.text3 }}>{user.name.split(" ")[0]}</div>
-          <button onClick={onLogout} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.border}`, background:"transparent", color:u.text3, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs }}>Out</button>
+          <button onClick={onLogout} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs, fontWeight:L.fwSemi }}>Sign Out</button>
         </div>
       </div>
       {/* Content */}
@@ -3487,7 +3487,7 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
               <div style={{ fontSize:L.fsXs, color:u.text3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{user.email}</div>
             </div>
           </div>
-          <button onClick={onLogout} style={{ width:"100%", height:32, borderRadius:R.md, border:`1px solid ${u.border}`, background:"transparent", color:u.text3, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm }}>Sign Out</button>
+          <button onClick={onLogout} style={{ width:"100%", height:32, borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm, fontWeight:L.fwSemi }}>Sign Out</button>
         </div>
       </div>
       <div style={{ flex:1, overflowY:"auto", minWidth:0 }}>
@@ -4548,7 +4548,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
               </div>
               <div style={{ display:"flex", gap:6 }}>
                 <button onClick={exportCSV} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.accent}40`, background:`${u.accent}12`, color:u.accent, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs, fontWeight:L.fwSemi }}>↓ CSV</button>
-                <button onClick={onLogout} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.border}`, background:"transparent", color:u.text3, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs }}>Out</button>
+                <button onClick={onLogout} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs, fontWeight:L.fwSemi }}>Sign Out</button>
               </div>
             </div>
             {/* Horizontal scrollable tab nav */}
@@ -4576,7 +4576,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             <div style={{ fontSize:L.fsXs, color:supa?(syncing?u.orange:u.green):u.text3, textAlign:"center" }}>
               {supa ? (syncing ? "⟳ Syncing with cloud…" : "☁ Cloud connected") : "⚠ Local storage only"}
             </div>
-            <button onClick={onLogout} style={{ height:34, borderRadius:R.md, border:`1px solid ${u.border}`, background:"transparent", color:u.text3, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm }}>Sign Out</button>
+            <button onClick={onLogout} style={{ width:"100%", height:32, borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm, fontWeight:L.fwSemi }}>Sign Out</button>
           </div>
         </div>
       )}
