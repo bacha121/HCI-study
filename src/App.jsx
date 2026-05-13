@@ -5069,7 +5069,7 @@ export default function App() {
   if (screen === "tutorial") return <><style>{GCSS}</style><GlobalToggle /><TutorialPage u={u} uiDark={uiDark} onToggleTheme={toggleTheme} onBack={() => setScreen("app")} /></>;
 
   if (screen === "app") return (
-    <><style>{GCSS}</style>
+    <><style>{GCSS}</style><GlobalToggle />
       <AppShell user={user} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} tab={uiTab} setTab={setUiTab} onLogout={logout}>
         {uiTab === "dashboard" && <Dashboard user={user} u={u} onStart={startExp} onProfile={() => setUiTab("profile")} onTutorial={() => setScreen("tutorial")} onReport={() => setUiTab("report")} />}
         {uiTab === "report" && <ReportScreen user={user} u={u} onBack={() => setUiTab("dashboard")} />}
