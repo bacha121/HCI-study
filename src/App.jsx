@@ -4067,47 +4067,352 @@ function ParticipantHeatmap({ u, users }) {
 }
 
 // ─── REPORT SCREEN ───────────────────────────────────────────────────────────────
+function generateInsights(stats, user, nasa, dkC, ltC) {
+  const dem = user.dem || {};
+  const winner = stats.betterTheme;
+  const dkAcc = stats.accDk ?? 0, ltAcc = stats.accLt ?? 0;
+  const diff = Math.abs(dkAcc - ltAcc);
+  const dkRt = stats.rtDk, ltRt = stats.rtLt;
+
+  // ── Overall summary ──────────────────────────────────────────────────────────
+  const strengthLevel = v => v >= 0.85 ? "excellent" : v >= 0.70 ? "good" : v >= 0.55 ? "moderate" : "developing";
+  const overallAcc = (dkAcc + ltAcc) / 2;
+  const overallLevel = strengthLevel(overallAcc);
+
+  let summary = "";
+  if (diff < 0.04) {
+    summary = `You performed consistently well across both interface themes, with very little difference between dark and light mode (${Math.round(dkAcc*100)}% vs ${Math.round(ltAcc*100)}% accuracy). This suggests you are a highly adaptable user whose cognitive performance is not strongly influenced by visual theme — a genuinely useful quality for working across different environments and devices.`;
+  } else if (winner === "dark") {
+    summary = `Your results show a clear preference for dark mode at the cognitive level. You achieved ${Math.round(dkAcc*100)}% accuracy in dark mode compared to ${Math.round(ltAcc*100)}% in light mode — a difference of ${Math.round(diff*100)} percentage points. Dark interfaces appear to support your focus and reduce the cognitive load required to process visual information. This is consistent with research showing that some individuals experience reduced eye strain and improved contrast perception under dark themes.`;
+  } else {
+    summary = `Your cognitive performance was stronger in light mode. You achieved ${Math.round(ltAcc*100)}% accuracy in light mode compared to ${Math.round(dkAcc*100)}% in dark mode — a gap of ${Math.round(diff*100)} percentage points. Light interfaces appear to enhance your concentration and task processing. This aligns with findings that individuals who primarily work in bright environments often perform better with lighter interface themes.`;
+  }
+
+  // ── Speed insight ────────────────────────────────────────────────────────────
+  let speedInsight = "";
+  if (dkRt && ltRt) {
+    const faster = dkRt < ltRt ? "dark" : "light";
+    const fasterRt = Math.min(dkRt, ltRt), slowerRt = Math.max(dkRt, ltRt);
+    const rtDiff = Math.round(slowerRt - fasterRt);
+    if (rtDiff > 50) {
+      speedInsight = `You responded ${rtDiff}ms faster on average in ${faster} mode (${Math.round(fasterRt)}ms vs ${Math.round(slowerRt)}ms). While this may seem small, over hundreds of interactions in a workday, faster response times translate to meaningfully reduced mental effort and greater efficiency.`;
+    } else {
+      speedInsight = `Your response speed was similar across both themes (${Math.round(dkRt)}ms dark vs ${Math.round(ltRt)}ms light), suggesting that theme has minimal effect on how quickly you process and respond to information.`;
+    }
+  }
+
+  // ── Task-level insights ──────────────────────────────────────────────────────
+  const taskInsights = {};
+  const taskDescriptions = {
+    visual_search:  { name:"Visual Search",      what:"your ability to locate a target among distractors — a skill used constantly when scanning documents, dashboards, or emails." },
+    flanker:        { name:"Inhibitory Control",  what:"your ability to ignore irrelevant information and focus on what matters — critical for avoiding distractions in busy work environments." },
+    comparison:     { name:"Analytical Thinking", what:"your ability to compare and evaluate data accurately — directly relevant to decision-making and data analysis tasks." },
+    reading_comp:   { name:"Reading Comprehension", what:"how accurately you absorb and retain written information — fundamental to any knowledge work." },
+    email_sel:      { name:"Decision Making",     what:"your ability to select the most appropriate option under time pressure — mirroring real-world email triage and task prioritisation." },
+    form_fill:      { name:"Precision & Accuracy", what:"your accuracy when entering structured information — relevant to data entry, form completion, and administrative tasks." },
+    memory_recall:  { name:"Working Memory",      what:"how well you hold and retrieve information over short periods — the foundation of multi-step problem solving." },
+    nav_task:       { name:"Navigation",          what:"your ability to move efficiently through menu structures — reflecting everyday software and web navigation." },
+  };
+
+  CFG.tasks.forEach(tid => {
+    const tp = stats.tperf[tid];
+    if (!tp || !tp.n) return;
+    const acc = tp.acc ?? 0;
+    const level = strengthLevel(acc);
+    const desc = taskDescriptions[tid];
+    if (!desc) return;
+    let insight = `Your ${desc.name} score of ${Math.round(acc*100)}% reflects `;
+    if (level === "excellent") insight += `an excellent ability to manage ${desc.what} You are in a strong position here.`;
+    else if (level === "good") insight += `a solid command of ${desc.what} With practice, this can become a consistent strength.`;
+    else if (level === "moderate") insight += `a developing capacity for ${desc.what} This is a normal starting point and tends to improve with familiarity.`;
+    else insight += `an area for growth in ${desc.what} This is not unusual for first-time assessments and can improve significantly with targeted practice.`;
+    taskInsights[tid] = insight;
+  });
+
+  // ── Workload insight ─────────────────────────────────────────────────────────
+  let workloadInsight = "";
+  if (nasa?.totalScore != null) {
+    const score = nasa.totalScore;
+    if (score < 7) workloadInsight = `Your overall workload score of ${score.toFixed(1)} out of 20 indicates a low cognitive load experience. You found the tasks manageable and did not experience significant mental fatigue — a very positive result that suggests the tasks were well-matched to your current skill level.`;
+    else if (score < 13) workloadInsight = `Your workload score of ${score.toFixed(1)} out of 20 reflects a moderate level of cognitive effort. This is the expected range for unfamiliar tasks — it shows genuine engagement without overwhelming strain. As you become more familiar with similar interfaces, this figure tends to decrease.`;
+    else workloadInsight = `Your workload score of ${score.toFixed(1)} out of 20 suggests the tasks were cognitively demanding. This is common when encountering new interface types for the first time. The good news is that with repeated exposure, perceived workload drops substantially as tasks become more automatic.`;
+  }
+
+  // ── Recommendation ───────────────────────────────────────────────────────────
+  let recommendation = "";
+  const pref = user.pref;
+  const prefMatchesPerf = pref === winner;
+  if (pref === "none" || !pref) {
+    recommendation = `Based purely on your performance data, we recommend using ${winner} mode for cognitively demanding tasks such as reading, writing, and analysis. For casual browsing or relaxed work, either theme will serve you well.`;
+  } else if (prefMatchesPerf) {
+    recommendation = `Your subjective preference for ${pref} mode aligns perfectly with your objective performance data. Trust your instincts — use ${winner} mode when focus and accuracy matter most.`;
+  } else {
+    recommendation = `Interestingly, your subjective preference was ${pref} mode, but your performance data favours ${winner} mode. Consider experimenting with ${winner} mode for focused tasks (reading, analysis, writing) while keeping ${pref} mode for lighter, more casual work. Many people find a hybrid approach works best.`;
+  }
+
+  return { summary, speedInsight, taskInsights, workloadInsight, recommendation };
+}
+
 function ReportScreen({ user, u, onBack }) {
-  const stats = useMemo(() => computeStats(user), [user]);
-  const exps = user.experiments || [];
-  const nasa = exps.find(e => e.nasaTLX)?.nasaTLX;
-  const dkC  = exps.find(e => e.theme === "dark")?.comfort;
-  const ltC  = exps.find(e => e.theme === "light")?.comfort;
-  const dem  = user.dem || {};
-  const winner = stats?.betterTheme;
-  const wCol = winner === "dark" ? "#3B82F6" : "#D97706";
-  const pct = v => v != null ? Math.round(v * 100) + "%" : "—";
-  const ms  = v => v != null ? Math.round(v) + " ms" : "—";
-  const dateStr = user.completedAt ? new Date(user.completedAt).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" }) : new Date().toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" });
-  const Bar = ({ value, max=1, color="#3B82F6" }) => <div style={{ height:7, background:"#E2E8F0", borderRadius:99, overflow:"hidden" }}><div style={{ height:"100%", width:`${Math.round(Math.min(1,value/max)*100)}%`, background:color, borderRadius:99 }} /></div>;
-  const NASA_DIMS = [{ k:"md", l:"Mental Demand" }, { k:"pd", l:"Physical Demand" }, { k:"td", l:"Temporal Demand" }, { k:"pe", l:"Performance" }, { k:"ef", l:"Effort" }, { k:"fr", l:"Frustration" }];
-  const COMFORT_DIMS = [{ key:"visualComfort", label:"Visual Comfort", higherBetter:true }, { key:"eyeStrain", label:"Eye Strain", higherBetter:false }, { key:"fatigue", label:"Mental Fatigue", higherBetter:false }, { key:"satisfaction", label:"Satisfaction", higherBetter:true }];
+  const stats  = useMemo(() => computeStats(user), [user]);
+  const exps   = user.experiments || [];
+  const nasa   = exps.find(e => e.nasaTLX)?.nasaTLX;
+  const dkC    = exps.find(e => e.theme === "dark")?.comfort;
+  const ltC    = exps.find(e => e.theme === "light")?.comfort;
+  const dem    = user.dem || {};
+
+  if (!stats) return (
+    <div style={{ padding:40, textAlign:"center", fontFamily:"inherit" }}>
+      <p>No experiment data found.</p>
+      <button onClick={onBack}>← Back</button>
+    </div>
+  );
+
+  const insights = generateInsights(stats, user, nasa, dkC, ltC);
+  const winner   = stats.betterTheme;
+  const wCol     = winner === "dark" ? "#1D4ED8" : "#B45309";
+  const wBg      = winner === "dark" ? "#EFF6FF" : "#FFFBEB";
+  const dateStr  = user.completedAt
+    ? new Date(user.completedAt).toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" })
+    : new Date().toLocaleDateString("en-GB", { day:"numeric", month:"long", year:"numeric" });
+
+  const pct  = v => v != null ? Math.round(v * 100) + "%" : "—";
+  const ms   = v => v != null ? Math.round(v) + " ms" : "—";
+  const accColor = v => v >= 0.85 ? "#15803D" : v >= 0.70 ? "#1D4ED8" : v >= 0.55 ? "#B45309" : "#DC2626";
+
+  const Bar = ({ value, max=1, color="#1D4ED8", height=8 }) => (
+    <div style={{ height, background:"#E2E8F0", borderRadius:99, overflow:"hidden" }}>
+      <div style={{ height:"100%", width:`${Math.round(Math.min(1,Math.max(0,value/max))*100)}%`, background:color, borderRadius:99 }} />
+    </div>
+  );
+
+  const SectionTitle = ({ children, color="#1D4ED8" }) => (
+    <div style={{ display:"flex", alignItems:"center", gap:10, margin:"36px 0 16px", paddingBottom:8, borderBottom:"2px solid #E2E8F0" }}>
+      <div style={{ width:4, height:20, background:color, borderRadius:2, flexShrink:0 }} />
+      <div style={{ fontSize:15, fontWeight:800, color:"#0F172A", letterSpacing:-.2, textTransform:"uppercase" }}>{children}</div>
+    </div>
+  );
+
+  const InsightBox = ({ text, color="#1D4ED8" }) => (
+    <div style={{ padding:"14px 18px", borderRadius:10, background:`${color}08`, border:`1px solid ${color}22`, marginBottom:16, lineHeight:1.8, fontSize:14, color:"#374151" }}>{text}</div>
+  );
+
+  const COMFORT_DIMS = [
+    { key:"visualComfort", label:"Visual Comfort",   higherBetter:true  },
+    { key:"eyeStrain",     label:"Eye Strain",        higherBetter:false },
+    { key:"fatigue",       label:"Mental Fatigue",    higherBetter:false },
+    { key:"satisfaction",  label:"Satisfaction",      higherBetter:true  },
+  ];
+
+  const NASA_DIMS = [
+    { k:"md", l:"Mental Demand"   }, { k:"pd", l:"Physical Demand" },
+    { k:"td", l:"Temporal Demand" }, { k:"pe", l:"Performance"     },
+    { k:"ef", l:"Effort"          }, { k:"fr", l:"Frustration"     },
+  ];
 
   return (
-    <div style={{ background:"#F8FAFC", minHeight:"100vh" }}>
-      <div className="no-print" style={{ position:"sticky", top:0, zIndex:100, background:"#fff", borderBottom:"1px solid #E2E8F0", padding:"12px 24px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-        <button onClick={onBack} style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#64748B" }}>← Back</button>
-        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 20px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:600 }}>🖨 Print / Save PDF</button>
+    <div style={{ background:"#F1F5F9", minHeight:"100vh", fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+
+      {/* Top bar — hidden when printing */}
+      <div className="no-print" style={{ position:"sticky", top:0, zIndex:100, background:"#fff", borderBottom:"1px solid #E2E8F0", padding:"12px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+        <button onClick={onBack} style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#64748B" }}>← Back to Dashboard</button>
+        <div style={{ fontSize:13, color:"#94A3B8" }}>Scroll to preview · Print to save as PDF</div>
+        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 22px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:700, letterSpacing:.2 }}>🖨 Save as PDF</button>
       </div>
-      <div id="report-root" style={{ maxWidth:760, margin:"0 auto", padding:"40px 48px 60px", background:"#fff", fontFamily:"'DM Sans',system-ui,sans-serif", color:"#0F172A" }}>
-        <div style={{ borderBottom:"3px solid #1D4ED8", paddingBottom:20, marginBottom:28 }}>
-          <div style={{ fontSize:11, fontWeight:700, color:"#3B82F6", letterSpacing:2, textTransform:"uppercase", marginBottom:8 }}>CogBench · Cognitive Performance Report</div>
-          <div style={{ display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
-            <div><div style={{ fontSize:26, fontWeight:800, letterSpacing:-.5 }}>{user.name}</div><div style={{ fontSize:13, color:"#64748B", marginTop:4 }}>{user.orderGroup === "DL" ? "Dark → Light" : "Light → Dark"} · Completed {dateStr}</div></div>
+
+      {/* Report */}
+      <div id="report-root" style={{ maxWidth:800, margin:"0 auto", background:"#fff", boxShadow:"0 4px 40px rgba(0,0,0,0.08)" }}>
+
+        {/* ── Cover header ── */}
+        <div style={{ background:"linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)", padding:"48px 56px 40px", color:"#fff" }}>
+          <div style={{ fontSize:11, letterSpacing:3, color:"#93C5FD", textTransform:"uppercase", marginBottom:20 }}>CogBench · Cognitive Performance Report</div>
+          <div style={{ fontSize:34, fontWeight:900, letterSpacing:-1, marginBottom:8, lineHeight:1.1 }}>{user.name}</div>
+          <div style={{ fontSize:14, color:"#CBD5E1", marginBottom:32 }}>
+            Completed {dateStr} &nbsp;·&nbsp; Condition: {user.orderGroup === "DL" ? "Dark → Light" : "Light → Dark"}
+          </div>
+          {/* Optimal interface */}
+          <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"20px 24px", border:"1px solid rgba(255,255,255,0.15)", backdropFilter:"blur(10px)" }}>
+            <div style={{ fontSize:11, letterSpacing:2, color:"#93C5FD", textTransform:"uppercase", marginBottom:8 }}>Your Recommended Interface</div>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
+              <div style={{ fontSize:24, fontWeight:900, color:"#fff" }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</div>
+              <div style={{ display:"flex", gap:24 }}>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:26, fontWeight:900, color:"#60A5FA" }}>{pct(stats.accDk)}</div>
+                  <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>🌙 Dark</div>
+                </div>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:26, fontWeight:900, color:"#FCD34D" }}>{pct(stats.accLt)}</div>
+                  <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>☀️ Light</div>
+                </div>
+                {stats.rtDk && <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:26, fontWeight:900, color:"#6EE7B7" }}>{ms(Math.min(stats.rtDk, stats.rtLt))}</div>
+                  <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Best RT</div>
+                </div>}
+              </div>
+            </div>
           </div>
         </div>
-        {winner && <div style={{ padding:"16px 20px", borderRadius:10, background:winner==="dark"?"#EFF6FF":"#FFFBEB", border:`2px solid ${wCol}`, marginBottom:28, display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
-          <div><div style={{ fontSize:10, fontWeight:700, color:wCol, letterSpacing:2, textTransform:"uppercase", marginBottom:4 }}>Recommended Interface</div><div style={{ fontSize:20, fontWeight:800, color:wCol }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</div></div>
-          <div style={{ display:"flex", gap:20 }}><div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:800, color:"#3B82F6" }}>{pct(stats?.accDk)}</div><div style={{ fontSize:12, color:"#64748B" }}>🌙 Dark</div></div><div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:800, color:"#D97706" }}>{pct(stats?.accLt)}</div><div style={{ fontSize:12, color:"#64748B" }}>☀️ Light</div></div></div>
-        </div>}
-        <div style={{ fontSize:11, fontWeight:700, color:"#1E3A8A", letterSpacing:.5, textTransform:"uppercase", margin:"24px 0 10px", display:"flex", alignItems:"center", gap:8 }}><div style={{ width:3, height:16, background:"#3B82F6", borderRadius:2 }} />Performance</div>
-        {stats && <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, marginBottom:24 }}>
-          <thead><tr style={{ background:"#1E3A8A", color:"#fff" }}>{["Task","Overall","Dark","Light",""].map(h=><th key={h} style={{ padding:"8px 10px", textAlign:"left", fontWeight:600, fontSize:11 }}>{h}</th>)}</tr></thead>
-          <tbody>{CFG.tasks.map((tid,i)=>{ const tp=stats.tperf[tid]; if(!tp||!tp.n) return null; const acc=tp.acc??0; const col=acc>=0.8?"#16A34A":acc>=0.6?"#EA580C":"#DC2626"; return <tr key={tid} style={{ background:i%2===0?"#fff":"#F8FAFC" }}><td style={{ padding:"8px 10px", fontWeight:500 }}>{CFG.TL[tid]||tid}</td><td style={{ padding:"8px 10px", fontWeight:700, color:col }}>{pct(acc)}</td><td style={{ padding:"8px 10px", color:"#3B82F6" }}>{pct(tp.dk?.acc)}</td><td style={{ padding:"8px 10px", color:"#D97706" }}>{pct(tp.lt?.acc)}</td><td style={{ padding:"8px 10px", width:100 }}><Bar value={acc} color={col} /></td></tr>; })}</tbody>
-        </table>}
-        {nasa && <><div style={{ fontSize:11, fontWeight:700, color:"#1E3A8A", letterSpacing:.5, textTransform:"uppercase", margin:"24px 0 10px", display:"flex", alignItems:"center", gap:8 }}><div style={{ width:3, height:16, background:"#3B82F6", borderRadius:2 }} />Workload (NASA-TLX)</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8, marginBottom:24 }}>{NASA_DIMS.map(({k,l})=>{ const v=nasa[k]; if(!v) return null; const pct2=v/20; const col=pct2<0.35?"#16A34A":pct2<0.65?"#EA580C":"#DC2626"; return <div key={k} style={{ padding:"10px 12px", background:"#F8FAFC", borderRadius:8, border:"1px solid #E2E8F0" }}><div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}><span style={{ fontSize:11, color:"#64748B" }}>{l}</span><span style={{ fontWeight:700, color:col, fontSize:13 }}>{v}/20</span></div><Bar value={v} max={20} color={col} /></div>; })}</div></>}
-        <div style={{ marginTop:48, paddingTop:16, borderTop:"2px solid #E2E8F0", display:"flex", justifyContent:"space-between", fontSize:12, color:"#64748B" }}><span>CogBench · Cognitive Performance Report</span><span>{user.name} · {dateStr}</span></div>
+
+        {/* ── Body ── */}
+        <div style={{ padding:"8px 56px 64px" }}>
+
+          {/* About this report */}
+          <SectionTitle>About This Report</SectionTitle>
+          <div style={{ fontSize:14, color:"#4B5563", lineHeight:1.9 }}>
+            This report summarises your cognitive performance across 8 tasks completed in both dark and light interface themes. It is designed to be meaningful and actionable — not just a list of numbers. Each section includes a plain-language interpretation of what your scores mean in practical terms.
+          </div>
+
+          {/* Profile */}
+          <SectionTitle>Your Profile</SectionTitle>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 32px" }}>
+            {[
+              ["Age",              dem.age||"—"],
+              ["Gender",           dem.gender||"—"],
+              ["Education",        dem.edu||"—"],
+              ["Computer Skills",  dem.proficiency||"—"],
+              ["Daily Screen Time",dem.screenTime||"—"],
+              ["Dark Mode Habit",  dem.darkMode||"—"],
+            ].map(([k,v]) => (
+              <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:"1px solid #F1F5F9", fontSize:13 }}>
+                <span style={{ color:"#6B7280" }}>{k}</span>
+                <span style={{ fontWeight:600, color:"#111827" }}>{v}</span>
+              </div>
+            ))}
+          </div>
+          {user.pref && user.pref !== "none" && (
+            <div style={{ marginTop:12, padding:"10px 16px", borderRadius:8, background:wBg, border:`1px solid ${wCol}30`, display:"flex", justifyContent:"space-between", fontSize:13 }}>
+              <span style={{ color:"#6B7280" }}>Self-reported preference</span>
+              <span style={{ fontWeight:700, color:wCol }}>{user.pref === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</span>
+            </div>
+          )}
+
+          {/* Overall summary */}
+          <SectionTitle>Overall Summary</SectionTitle>
+          <InsightBox text={insights.summary} />
+          {insights.speedInsight && <InsightBox text={insights.speedInsight} color="#7C3AED" />}
+
+          {/* Task Performance */}
+          <SectionTitle>Task-by-Task Performance</SectionTitle>
+          <div style={{ fontSize:13, color:"#6B7280", marginBottom:16, lineHeight:1.7 }}>
+            Each task measures a specific cognitive skill. Below are your scores alongside a plain-language explanation of what they mean for you.
+          </div>
+          {CFG.tasks.map((tid, i) => {
+            const tp = stats.tperf[tid];
+            if (!tp || !tp.n) return null;
+            const acc = tp.acc ?? 0;
+            const col = accColor(acc);
+            const insight = insights.taskInsights[tid];
+            return (
+              <div key={tid} style={{ marginBottom:20, padding:"16px 20px", borderRadius:10, border:"1px solid #E2E8F0", background:i%2===0?"#FAFAFA":"#fff" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+                  <div style={{ fontWeight:700, fontSize:14, color:"#111827" }}>{CFG.TL[tid]||tid}</div>
+                  <div style={{ display:"flex", gap:16, alignItems:"center" }}>
+                    <span style={{ fontSize:11, color:"#94A3B8" }}>🌙 {pct(tp.dk?.acc)}</span>
+                    <span style={{ fontSize:11, color:"#94A3B8" }}>☀️ {pct(tp.lt?.acc)}</span>
+                    <span style={{ fontSize:16, fontWeight:900, color:col }}>{pct(acc)}</span>
+                  </div>
+                </div>
+                <Bar value={acc} color={col} height={6} />
+                {insight && <div style={{ marginTop:10, fontSize:13, color:"#4B5563", lineHeight:1.75, fontStyle:"italic" }}>{insight}</div>}
+              </div>
+            );
+          })}
+
+          {/* Dark vs Light comparison */}
+          <SectionTitle color="#7C3AED">Dark vs Light Comparison</SectionTitle>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+            {[
+              { label:"🌙 Dark Mode Accuracy",  value:pct(stats.accDk), bar:stats.accDk,    color:"#1D4ED8" },
+              { label:"☀️ Light Mode Accuracy", value:pct(stats.accLt), bar:stats.accLt,    color:"#D97706" },
+              { label:"🌙 Dark Response Time",  value:ms(stats.rtDk),  bar:null,            color:"#1D4ED8" },
+              { label:"☀️ Light Response Time", value:ms(stats.rtLt),  bar:null,            color:"#D97706" },
+            ].map(({ label, value, bar, color }) => (
+              <div key={label} style={{ padding:"14px 16px", borderRadius:10, border:"1px solid #E2E8F0", background:"#FAFAFA" }}>
+                <div style={{ fontSize:12, color:"#6B7280", marginBottom:6 }}>{label}</div>
+                <div style={{ fontSize:20, fontWeight:800, color, marginBottom:bar!=null?8:0 }}>{value}</div>
+                {bar != null && <Bar value={bar} color={color} height={5} />}
+              </div>
+            ))}
+          </div>
+
+          {/* Visual Comfort */}
+          {(dkC || ltC) && <>
+            <SectionTitle color="#059669">Comfort & Wellbeing</SectionTitle>
+            <div style={{ fontSize:13, color:"#6B7280", marginBottom:16, lineHeight:1.7 }}>
+              These ratings reflect how comfortable you felt during each theme condition. Scale: 1 (lowest) to 7 (highest). For Eye Strain and Fatigue, lower is better.
+            </div>
+            {COMFORT_DIMS.map(({ key, label, higherBetter }) => {
+              const dv = dkC?.[key], lv = ltC?.[key];
+              const dkBetter = dv!=null && lv!=null && (higherBetter ? dv>lv : dv<lv);
+              const ltBetter = dv!=null && lv!=null && (higherBetter ? lv>dv : lv<dv);
+              return (
+                <div key={key} style={{ marginBottom:14 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6, fontSize:13 }}>
+                    <span style={{ fontWeight:600, color:"#111827" }}>{label}</span>
+                    <span style={{ color:"#6B7280" }}>{higherBetter?"higher is better":"lower is better"}</span>
+                  </div>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                    {[{ v:dv, c:"#1D4ED8", l:"🌙 Dark", better:dkBetter }, { v:lv, c:"#D97706", l:"☀️ Light", better:ltBetter }].map(({ v, c, l, better }) => (
+                      <div key={l} style={{ padding:"8px 12px", borderRadius:8, background:"#F8FAFC", border:`1px solid ${better?"#10B981":"#E2E8F0"}` }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5, fontSize:12 }}>
+                          <span style={{ color:"#6B7280" }}>{l}</span>
+                          <span style={{ fontWeight:700, color:c }}>{v != null ? `${v}/7` : "—"}</span>
+                        </div>
+                        {v != null && <Bar value={v} max={7} color={c} height={5} />}
+                        {better && <div style={{ fontSize:10, color:"#059669", marginTop:4, fontWeight:600 }}>✓ Better condition</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </>}
+
+          {/* Workload */}
+          {nasa && <>
+            <SectionTitle color="#DC2626">Cognitive Workload (NASA-TLX)</SectionTitle>
+            <InsightBox text={insights.workloadInsight} color="#DC2626" />
+            <div style={{ padding:"16px 20px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+              <div>
+                <div style={{ fontSize:12, color:"#9CA3AF", marginBottom:4 }}>Overall Workload Score</div>
+                <div style={{ fontSize:28, fontWeight:900, color: nasa.totalScore<7?"#15803D":nasa.totalScore<13?"#B45309":"#DC2626" }}>{nasa.totalScore?.toFixed(1)} <span style={{ fontSize:14, fontWeight:400, color:"#9CA3AF" }}>/ 20</span></div>
+              </div>
+              <div style={{ fontSize:13, color:"#6B7280", textAlign:"right" }}>
+                <div>Low: &lt;7 · Moderate: 7–13</div>
+                <div>High: &gt;13</div>
+              </div>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              {NASA_DIMS.map(({ k, l }) => {
+                const v = nasa[k]; if (!v) return null;
+                const col = v/20<0.35?"#15803D":v/20<0.65?"#B45309":"#DC2626";
+                return (
+                  <div key={k} style={{ padding:"10px 14px", borderRadius:8, background:"#FAFAFA", border:"1px solid #E2E8F0" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
+                      <span style={{ color:"#6B7280" }}>{l}</span>
+                      <span style={{ fontWeight:700, color:col }}>{v}/20</span>
+                    </div>
+                    <Bar value={v} max={20} color={col} height={5} />
+                  </div>
+                );
+              })}
+            </div>
+          </>}
+
+          {/* Recommendation */}
+          <SectionTitle color="#059669">Our Recommendation</SectionTitle>
+          <div style={{ padding:"20px 24px", borderRadius:12, background:wBg, border:`2px solid ${wCol}`, marginBottom:24 }}>
+            <div style={{ fontSize:18, fontWeight:800, color:wCol, marginBottom:10 }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"} for Focused Work</div>
+            <div style={{ fontSize:14, color:"#374151", lineHeight:1.85 }}>{insights.recommendation}</div>
+          </div>
+
+          {/* Footer */}
+          <div style={{ marginTop:48, paddingTop:20, borderTop:"1px solid #E2E8F0", display:"flex", justifyContent:"space-between", fontSize:12, color:"#9CA3AF" }}>
+            <span>CogBench · HCI Cognitive Load Study</span>
+            <span>{user.name} · {dateStr}</span>
+          </div>
+
+        </div>
       </div>
     </div>
   );
