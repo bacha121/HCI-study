@@ -3469,7 +3469,7 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
         </div>
       </div>
       <div style={{ flex:1, overflowY:"auto", minWidth:0 }}>
-        <div style={{ maxWidth:960, margin:"0 auto", width:"100%" }}>{children}</div>
+        <div style={{ width:"100%" }}>{children}</div>
       </div>
     </div>
   );
@@ -4256,7 +4256,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
         </div>
       )}
       <div style={{ flex:1, overflowY:"auto", minWidth:0 }}>
-        <div style={{ maxWidth:960, margin:"0 auto", padding:mobile?`${L.spMd}px 14px`:`${L.spXl}px ${L.spLg}px`, width:"100%" }}>
+        <div style={{ width:"100%", padding:mobile?`${L.spMd}px 14px`:`${L.spXl}px ${L.spLg}px` }}>
         {tab === "overview" && (
           <div className="au">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
