@@ -3859,7 +3859,7 @@ function LiveMonitorTab({ u, users }) {
   const activeToday    = all.filter(usr => (usr.experiments||[]).some(e => e.ts && new Date(e.ts).toDateString() === todayStr));
   const inProgress     = activeToday.filter(usr => !usr.completed && (usr.experiments||[]).length < 2);
   const completedToday = activeToday.filter(usr =>  usr.completed || (usr.experiments||[]).length >= 2);
-  const updated = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  const updated = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", hour12:true });
 
   return (
     <div className="au" style={{ fontFamily:L.font }}>
@@ -4638,8 +4638,8 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                           </div>
                           <div style={{ fontSize: L.fsSm, color: u.text3 }}>{p.email}</div>
                           <div style={{ display: "flex", gap: 12, marginTop: 3, flexWrap: "wrap" }}>
-                            {p.createdAt && <span style={{ fontSize: L.fsXs, color: u.text3 }}>📅 Registered: {new Date(p.createdAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
-                            {p.completedAt && <span style={{ fontSize: L.fsXs, color: u.green }}>✓ Completed: {new Date(p.completedAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
+                            {p.createdAt && <span style={{ fontSize: L.fsXs, color: u.text3 }}>📅 Registered: {new Date(p.createdAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })}</span>}
+                            {p.completedAt && <span style={{ fontSize: L.fsXs, color: u.green }}>✓ Completed: {new Date(p.completedAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })}</span>}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: L.spLg, alignItems: "center" }}>
@@ -4660,8 +4660,8 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                   <div style={{ width: 52, height: 52, borderRadius: 14, background: u.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: L.fwBold, color: "#fff" }}>{sel.name.slice(0, 2).toUpperCase()}</div>
                   <div><div style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: u.text }}>{sel.name}</div><div style={{ fontSize: L.fsSm, color: u.text3 }}>{sel.email}</div>
                     <div style={{ display:"flex", gap:12, marginTop:4, flexWrap:"wrap" }}>
-                      {sel.createdAt && <span style={{ fontSize: L.fsXs, color: u.text3 }}>📅 Registered: {new Date(sel.createdAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
-                      {sel.completedAt && <span style={{ fontSize: L.fsXs, color: u.green }}>✓ Completed: {new Date(sel.completedAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
+                      {sel.createdAt && <span style={{ fontSize: L.fsXs, color: u.text3 }}>📅 Registered: {new Date(sel.createdAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })}</span>}
+                      {sel.completedAt && <span style={{ fontSize: L.fsXs, color: u.green }}>✓ Completed: {new Date(sel.completedAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })}</span>}
                     </div>
                   </div>
                 </div>
