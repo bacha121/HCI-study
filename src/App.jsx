@@ -2720,19 +2720,44 @@ function AuthScreen({ onLogin, u, uiDark, onToggleTheme }) {
   const [form, setForm] = useState({ name: "", email: "", pw: "", pw2: "" });
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
-  const login = () => {
+  const login = async () => {
     setErr("");
     if (form.email === CFG.adminEmail && form.pw === CFG.adminPw) { onLogin({ id:"admin", name:"Administrator", email:CFG.adminEmail, role:"admin" }); return; }
-    const user = db.all().find(x => x.email === form.email && x.pwHash === hashPw(form.pw));
+    // Check local first
+    let user = db.all().find(x => x.email === form.email && x.pwHash === hashPw(form.pw));
+    // Not found locally — try pulling from Supabase
+    if (!user && supa) {
+      setErr("Checking cloud…");
+      try {
+        const { data } = await supa.from("participants").select("data").eq("id", btoa(form.email).replace(/=/g,"")).limit(1);
+        if (!data?.length) {
+          // Try scanning all for matching email
+          const { data: all } = await supa.from("participants").select("data");
+          const match = all?.map(r => r.data).find(u2 => u2.email === form.email && u2.pwHash === hashPw(form.pw));
+          if (match) { db.save(match); user = match; }
+        } else {
+          const candidate = data[0].data;
+          if (candidate?.pwHash === hashPw(form.pw)) { db.save(candidate); user = candidate; }
+        }
+      } catch { /* fall through to error */ }
+    }
     if (!user) { setErr("Invalid email or password."); return; }
     db.setCur(user.id); onLogin(user);
   };
-  const register = () => {
+  const register = async () => {
     setErr("");
     if (!form.name || !form.email || !form.pw) { setErr("All fields are required."); return; }
     if (form.pw.length < 6) { setErr("Password must be at least 6 characters."); return; }
     if (form.pw !== form.pw2) { setErr("Passwords do not match."); return; }
     if (db.all().find(x => x.email === form.email)) { setErr("Email already registered."); return; }
+    // Check Supabase for duplicate email
+    if (supa) {
+      try {
+        const { data } = await supa.from("participants").select("data");
+        const cloudMatch = data?.map(r => r.data).find(u2 => u2.email === form.email);
+        if (cloudMatch) { setErr("Email already registered. Try signing in."); return; }
+      } catch { /* proceed */ }
+    }
     const user = { id: uid(), name: form.name, email: form.email, pwHash: hashPw(form.pw), role: "user", experiments: [], createdAt: new Date().toISOString() };
     db.save(user); db.setCur(user.id); onLogin(user);
   };
@@ -3218,11 +3243,9 @@ function WorkloadTab({ user, u }) {
   );
 }
 
-// ─── DASHBOARD ────────────────────────────────────────────────────────────────────
-function Dashboard({ user, u, onStart, onProfile, onTutorial }) {
+function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
   const stats = useMemo(() => computeStats(user), [user]);
   const recent = (user.experiments || []).slice(-4).reverse();
-  // Completed = explicit flag OR two experiment sessions already saved
   const isCompleted = !!(user.completed || (user.experiments || []).length >= 2);
   return (
     <div style={{ padding: `${L.spXl}px ${L.spLg}px`, fontFamily: L.font }} className="au">
@@ -3240,10 +3263,13 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial }) {
                 <div>
                   <div style={{ fontSize: L.fsXs, color: u.green, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Experiment Complete</div>
                   <h3 style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: u.text, margin: 0 }}>Thank you for participating!</h3>
-                  <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 4 }}>Your data is saved. View your cognitive analysis in <strong style={{ color: u.accent }}>My Patterns</strong>.</p>
+                  <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 4 }}>Your personalised report is ready to download.</p>
                 </div>
               </div>
-              <Badge u={u} color={u.green}>Locked — 1 attempt only</Badge>
+              <div style={{ display: "flex", flexDirection: "column", gap: L.spSm, alignItems: "flex-end" }}>
+                <Btn u={u} v="grad" onClick={onReport}>⬇ Download My Report</Btn>
+                <Badge u={u} color={u.green}>Locked — 1 attempt only</Badge>
+              </div>
             </>
           ) : (
             <>
@@ -5043,7 +5069,8 @@ export default function App() {
   if (screen === "app") return (
     <><style>{GCSS}</style>
       <AppShell user={user} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} tab={uiTab} setTab={setUiTab} onLogout={logout}>
-        {uiTab === "dashboard" && <Dashboard user={user} u={u} onStart={startExp} onProfile={() => setUiTab("profile")} onTutorial={() => setScreen("tutorial")} />}
+        {uiTab === "dashboard" && <Dashboard user={user} u={u} onStart={startExp} onProfile={() => setUiTab("profile")} onTutorial={() => setScreen("tutorial")} onReport={() => setUiTab("report")} />}
+        {uiTab === "report" && <ReportScreen user={user} u={u} onBack={() => setUiTab("dashboard")} />}
         {uiTab === "profile"   && <ProfilePage user={user} u={u} onSave={upd => setUser(upd)} />}
         {uiTab === "patterns"  && <PatternsTab user={user} u={u} />}
         {uiTab === "comfort"   && <VisualComfortTab user={user} u={u} />}
