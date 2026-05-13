@@ -4637,6 +4637,10 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                             {p.isTestData && <span style={{ fontSize: L.fsXs, padding: "1px 6px", borderRadius: R.pill, background: `${u.teal}18`, color: u.teal, border: `1px solid ${u.teal}28` }}>test</span>}
                           </div>
                           <div style={{ fontSize: L.fsSm, color: u.text3 }}>{p.email}</div>
+                          <div style={{ display: "flex", gap: 12, marginTop: 3, flexWrap: "wrap" }}>
+                            {p.createdAt && <span style={{ fontSize: L.fsXs, color: u.text3 }}>📅 Registered: {new Date(p.createdAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
+                            {p.completedAt && <span style={{ fontSize: L.fsXs, color: u.green }}>✓ Completed: {new Date(p.completedAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
+                          </div>
                         </div>
                         <div style={{ display: "flex", gap: L.spLg, alignItems: "center" }}>
                           {s && <Badge u={u} color={s.betterTheme === "dark" ? u.accent2 : u.gold}>{s.betterTheme}</Badge>}
@@ -4654,7 +4658,12 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
                   <div style={{ width: 52, height: 52, borderRadius: 14, background: u.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: L.fwBold, color: "#fff" }}>{sel.name.slice(0, 2).toUpperCase()}</div>
-                  <div><div style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: u.text }}>{sel.name}</div><div style={{ fontSize: L.fsSm, color: u.text3 }}>{sel.email}</div></div>
+                  <div><div style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: u.text }}>{sel.name}</div><div style={{ fontSize: L.fsSm, color: u.text3 }}>{sel.email}</div>
+                    <div style={{ display:"flex", gap:12, marginTop:4, flexWrap:"wrap" }}>
+                      {sel.createdAt && <span style={{ fontSize: L.fsXs, color: u.text3 }}>📅 Registered: {new Date(sel.createdAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
+                      {sel.completedAt && <span style={{ fontSize: L.fsXs, color: u.green }}>✓ Completed: {new Date(sel.completedAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>}
+                    </div>
+                  </div>
                 </div>
                 {(sel.experiments || []).map((sess, i) => {
                   const allT2 = (sess.tasks || []).flatMap(t => t.trials || []);
