@@ -4596,13 +4596,13 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 </Card>
               ))}
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: L.spMd }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: L.spMd }}>
               <Card u={u} style={{ padding: L.spLg }}>
                 <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Theme Comparison</div>
-                {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:avg(dkT.map(t => t.err||0)).toFixed(2), li:avg(ltT.map(t => t.err||0)).toFixed(2) }].map(({ l, d, li }) => (
-                  <div key={l} style={{ display: "flex", alignItems: "center", gap: L.spMd, marginBottom: 10 }}>
-                    <span style={{ fontSize: L.fsSm, color: u.text3, width: 80, flexShrink: 0 }}>{l}</span>
-                    <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:String(Math.round(avg(dkT.map(t => t.err||0)))), li:String(Math.round(avg(ltT.map(t => t.err||0)))) }].map(({ l, d, li }) => (
+                  <div key={l} style={{ marginBottom: 10 }}>
+                    <span style={{ fontSize: L.fsXs, color: u.text3, display:"block", marginBottom:4 }}>{l}</span>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <div style={{ padding: "6px 10px", borderRadius: R.sm, background: `${u.accent2}14`, border: `1px solid ${u.accent2}24`, textAlign: "center" }}><div style={{ fontSize: L.fsXs, color: u.text3 }}>🌙 Dark</div><div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.accent2 }}>{d}</div></div>
                       <div style={{ padding: "6px 10px", borderRadius: R.sm, background: `${u.gold}14`, border: `1px solid ${u.gold}24`, textAlign: "center" }}><div style={{ fontSize: L.fsXs, color: u.text3 }}>☀️ Light</div><div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.gold }}>{li}</div></div>
                     </div>
