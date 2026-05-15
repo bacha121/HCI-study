@@ -1241,7 +1241,34 @@ function computeStats(user) {
   const comfortDk = { vc: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.visualComfort)||[0]), es: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.eyeStrain)||[0]), fa: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.fatigue)||[0]), sa: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.satisfaction)||[0]) };
   const comfortLt = { vc: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.visualComfort)||[0]), es: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.eyeStrain)||[0]), fa: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.fatigue)||[0]), sa: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.satisfaction)||[0]) };
   const rtDk = dkRTs.length ? avg(dkRTs) : null, rtLt = ltRTs.length ? avg(ltRTs) : null;
-  const betterTheme = accDk >= accLt && (rtDk === null || rtLt === null || rtDk <= rtLt) ? "dark" : "light";
+
+  // NASA-TLX per theme
+  const nasaDk = exps.filter(e => e.theme === "dark"  && e.nasaTLX).map(e => e.nasaTLX);
+  const nasaLt = exps.filter(e => e.theme === "light" && e.nasaTLX).map(e => e.nasaTLX);
+  const nasaTotalDk = nasaDk.length ? avg(nasaDk.map(n => n.totalScore)) : null;
+  const nasaTotalLt = nasaLt.length ? avg(nasaLt.map(n => n.totalScore)) : null;
+  const errDk = avg(dk.map(t => t.err || 0));
+  const errLt = avg(lt.map(t => t.err || 0));
+
+  // Comprehensive betterTheme — every measured aspect gets a vote
+  const betterTheme = (() => {
+    let dkPts = 0, ltPts = 0;
+    const vote = (dkVal, ltVal, higherBetter, weight = 1) => {
+      if (dkVal == null || ltVal == null) return;
+      if (dkVal > ltVal + 0.001) higherBetter ? (dkPts += weight) : (ltPts += weight);
+      else if (ltVal > dkVal + 0.001) higherBetter ? (ltPts += weight) : (dkPts += weight);
+    };
+    vote(accDk,            accLt,            true,  3); // Accuracy — highest weight
+    vote(rtDk,             rtLt,             false, 2); // Response time — lower is better
+    vote(errDk,            errLt,            false, 2); // Error count — lower is better
+    vote(nasaTotalDk,      nasaTotalLt,      false, 2); // Overall workload — lower is better
+    vote(efDk,             efLt,             false, 1); // Mental demand
+    vote(comfortDk.vc,     comfortLt.vc,     true,  1); // Visual comfort
+    vote(comfortDk.es,     comfortLt.es,     false, 1); // Eye strain — lower is better
+    vote(comfortDk.fa,     comfortLt.fa,     false, 1); // Fatigue — lower is better
+    vote(comfortDk.sa,     comfortLt.sa,     true,  1); // Satisfaction
+    return dkPts >= ltPts ? "dark" : "light";
+  })();
   const speed = clamp(1 - avg([...dkRTs,...ltRTs].filter(Boolean).map(r => r / 2000)), 0, 1);
   const cog = {
     speed: speed || 0,
@@ -2902,7 +2929,7 @@ function PatternsTab({ user, u }) {
           <Card u={u} style={{ padding:L.spMd, background:u.gradSoft, border:`1px solid ${u.accent}20` }}>
             <div style={{ fontSize:L.fsXs, color:u.accent, letterSpacing:1, textTransform:"uppercase", marginBottom:4 }}>Best Theme for You</div>
             <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:u.text, textTransform:"capitalize" }}>{stats.betterTheme} Mode</div>
-            <div style={{ fontSize:L.fsSm, color:u.text2, marginTop:4 }}>Based on accuracy + response time + mental effort</div>
+            <div style={{ fontSize:L.fsSm, color:u.text2, marginTop:4 }}>Based on accuracy, speed, errors, workload, eye strain, fatigue, comfort and satisfaction</div>
           </Card>
           <Card u={u} style={{ padding:L.spLg }}>
             <HBar u={u} data={dims.map((d,i) => ({ l:d.l, v:d.v*100, c:u.chart[i%u.chart.length], fmt:fmtPct(d.v) }))} />
@@ -4752,7 +4779,7 @@ function ConsentSc({ u, user, firstTheme, onAccept, onDecline }) {
             `This is a within-subjects (repeated measures) experiment. You will complete the same matched set of cognitive tasks under both interface themes — ${firstTheme.toUpperCase()} MODE first, then ${secondTheme.toUpperCase()} MODE.`,
             "Theme order is counterbalanced across participants to control for practice and order effects.",
             "Both objective data (task completion time, accuracy, error rate, response time) and subjective data (perceived comfort, fatigue, and cognitive load via NASA-TLX) are collected.",
-            "A brief comfort and fatigue rating is collected after each phase. A single NASA-TLX workload survey is completed at the very end.",
+            "A brief comfort and fatigue rating is collected after each phase, followed by a NASA-TLX workload survey. Both phases include these surveys.",
             "All data is anonymised and used solely for academic HCI research. You may withdraw at any time.",
             "Please do not adjust display brightness or settings during the experiment.",
           ].map((tx, i) => <li key={i} style={{ marginBottom: 5 }}>{tx}</li>)}
@@ -5009,33 +5036,31 @@ export default function App() {
     else advanceTask(upd);
   };
 
-  // Called after each phase's comfort & fatigue survey
+  // Called after each phase's comfort & fatigue survey — now NASA-TLX follows each phase
   const handleComfort = (comfort) => {
     const sessWithComfort = { ...pendingSess, comfort };
+    setPendingSess(sessWithComfort);
+    setScreen("nasa_tlx"); // NASA-TLX after EVERY phase
+  };
+
+  const handleNASA = tlx => {
+    const nasaTotal = parseFloat(((tlx.md+tlx.pd+tlx.td+tlx.pe+tlx.ef+tlx.fr)/6).toFixed(2));
+    const tlxFull = { ...tlx, totalScore: nasaTotal };
+    const sessRec = { ...(pendingSess || {}), nasaTLX: tlxFull };
     if (phase === 1) {
-      // Save phase 1 session (includes tasks + comfort), then break
-      const upd = { ...user, experiments: [...(user.experiments || []), sessWithComfort] };
+      // Phase 1 done — save session with comfort + NASA, then break
+      const upd = { ...user, experiments: [...(user.experiments || []), sessRec] };
       setUser(upd); db.save(upd);
       setSessTasks([]); setPhase(2); setTaskIdx(0); setTrialIdx(0); setTrialRes([]);
       setPendingSess(null);
       setScreen("break");
     } else {
-      // Phase 2: hold session (tasks + comfort), go collect NASA-TLX then save together
-      setPendingSess(sessWithComfort);
-      setScreen("nasa_tlx");
+      // Phase 2 done — save session, go to preference then debrief
+      const upd = { ...user, experiments: [...(user.experiments || []), sessRec], completed: true };
+      setUser(upd); db.save(upd);
+      setPendingSess(null);
+      setScreen("preference");
     }
-  };
-
-  const handleNASA = tlx => {
-    // Compute NASA_TotalScore (mean of all 6 dimensions) and store with the record
-    const nasaTotal = parseFloat(((tlx.md+tlx.pd+tlx.td+tlx.pe+tlx.ef+tlx.fr)/6).toFixed(2));
-    const tlxFull = { ...tlx, totalScore: nasaTotal };
-    // Attach NASA-TLX to the pending phase-2 session (which already has comfort ratings)
-    const sessRec = { ...(pendingSess || {}), nasaTLX: tlxFull };
-    const upd = { ...user, experiments: [...(user.experiments || []), sessRec], completed: true };
-    setUser(upd); db.save(upd);
-    setPendingSess(null);
-    setScreen("preference");
   };
 
   const handleBreak = () => {
