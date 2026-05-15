@@ -2764,6 +2764,7 @@ function AuthScreen({ onLogin, u, uiDark, onToggleTheme }) {
     <div style={{ minHeight: "100vh", background: u.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, fontFamily: L.font, position: "relative", overflow: "hidden" }}>
       {/* Theme toggle — top right */}
       <div style={{ position:"fixed", top:16, right:16, zIndex:10 }}>
+        <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
       </div>
       <div style={{ position: "absolute", top: "15%", left: "8%", width: 500, height: 500, borderRadius: "50%", background: u.gradSoft, filter: "blur(80px)", pointerEvents: "none" }} />
       <div style={{ position: "absolute", bottom: "10%", right: "8%", width: 400, height: 400, borderRadius: "50%", background: `radial-gradient(circle,${u.accent2}18,transparent 70%)`, filter: "blur(70px)", pointerEvents: "none" }} />
@@ -3442,7 +3443,7 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
           <span style={{ fontSize:L.fsMd, fontWeight:L.fwBold, color:u.text, letterSpacing:-.3 }}>CogBench</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <div style={{ fontSize:L.fsXs, color:u.text3 }}>{user.name.split(" ")[0]}</div>
+          <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
           <button onClick={onLogout} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs, fontWeight:L.fwSemi }}>Sign Out</button>
         </div>
       </div>
@@ -3486,6 +3487,9 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
               <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{user.name}</div>
               <div style={{ fontSize:L.fsXs, color:u.text3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{user.email}</div>
             </div>
+          </div>
+          <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+            <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
           </div>
           <button onClick={onLogout} style={{ width:"100%", height:32, borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm, fontWeight:L.fwSemi }}>Sign Out</button>
         </div>
@@ -4547,6 +4551,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 <Badge u={u} color={u.red}>Admin</Badge>
               </div>
               <div style={{ display:"flex", gap:6 }}>
+                <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
                 <button onClick={exportCSV} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.accent}40`, background:`${u.accent}12`, color:u.accent, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs, fontWeight:L.fwSemi }}>↓ CSV</button>
                 <button onClick={onLogout} style={{ height:28, padding:"0 10px", borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsXs, fontWeight:L.fwSemi }}>Sign Out</button>
               </div>
@@ -5063,22 +5068,13 @@ export default function App() {
     </div>
   );
 
-  // ─── GLOBAL THEME TOGGLE ─────────────────────────────────────────────────────────
-  // Single fixed position — consistent on every screen
-  const GlobalToggle = () => (
-    <div className="no-print" style={{ position:"fixed", top:14, right:16, zIndex:9999 }}>
-      <ThemeToggle uiDark={uiDark} onToggle={toggleTheme} u={u} />
-    </div>
-  );
+  if (screen === "auth") return <><style>{GCSS}</style><AuthScreen onLogin={login} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} /></>;
+  if (screen === "admin") return <><style>{GCSS}</style><AdminDashboard onLogout={logout} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} /></>;
 
-  // ─── ROUTING ────────────────────────────────────────────────────────────────────
-  if (screen === "auth") return <><style>{GCSS}</style><GlobalToggle /><AuthScreen onLogin={login} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} /></>;
-  if (screen === "admin") return <><style>{GCSS}</style><GlobalToggle /><AdminDashboard onLogout={logout} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} /></>;
-
-  if (screen === "tutorial") return <><style>{GCSS}</style><GlobalToggle /><TutorialPage u={u} uiDark={uiDark} onToggleTheme={toggleTheme} onBack={() => setScreen("app")} /></>;
+  if (screen === "tutorial") return <><style>{GCSS}</style><TutorialPage u={u} uiDark={uiDark} onToggleTheme={toggleTheme} onBack={() => setScreen("app")} /></>;
 
   if (screen === "app") return (
-    <><style>{GCSS}</style><GlobalToggle />
+    <><style>{GCSS}</style>
       <AppShell user={user} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} tab={uiTab} setTab={setUiTab} onLogout={logout}>
         {uiTab === "dashboard" && <Dashboard user={user} u={u} onStart={startExp} onProfile={() => setUiTab("profile")} onTutorial={() => setScreen("tutorial")} onReport={() => setUiTab("report")} />}
         {uiTab === "report" && <ReportScreen user={user} u={u} onBack={() => setUiTab("dashboard")} />}
@@ -5091,11 +5087,11 @@ export default function App() {
     </>
   );
 
-  if (screen === "demographics") return <><style>{GCSS}</style><GlobalToggle /><Wrap><DemographicsSc u={u} onDone={saveDem} /></Wrap></>;
-  if (screen === "consent") return <><style>{GCSS}</style><GlobalToggle /><Wrap><ConsentSc u={u} user={user} firstTheme={p1Theme || "dark"} onAccept={() => setScreen("instructions")} onDecline={goHome} /></Wrap></>;
+  if (screen === "demographics") return <><style>{GCSS}</style><Wrap><DemographicsSc u={u} onDone={saveDem} /></Wrap></>;
+  if (screen === "consent") return <><style>{GCSS}</style><Wrap><ConsentSc u={u} user={user} firstTheme={p1Theme || "dark"} onAccept={() => setScreen("instructions")} onDecline={goHome} /></Wrap></>;
   if (screen === "instructions") return <><style>{GCSS}</style><TimeoutOverlay /><Wrap><InstructionsSc u={u} phase={phase} theme={curTheme} onBegin={beginPhase} /></Wrap></>;
   if (screen === "preference") return <><style>{GCSS}</style><TimeoutOverlay /><Wrap><PreferenceSc u={u} onDone={handlePref} /></Wrap></>;
-  if (screen === "debrief") return <><style>{GCSS}</style><GlobalToggle /><Wrap><DebriefSc u={u} user={user} onHome={goHome} /></Wrap></>;
+  if (screen === "debrief") return <><style>{GCSS}</style><Wrap><DebriefSc u={u} user={user} onHome={goHome} /></Wrap></>;
   if (screen === "nasa_tlx") return <><style>{GCSS}</style><TimeoutOverlay /><div style={{ minHeight: "100vh", background: u.bg, padding: `${L.sp2Xl}px ${L.spLg}px` }}><NasaTLXScreen u={u} onDone={handleNASA} /></div></>;
   if (screen === "phase_comfort") return <><style>{GCSS}</style><TimeoutOverlay /><div style={{ minHeight: "100vh", background: u.bg, padding: `${L.sp2Xl}px ${L.spLg}px` }}><PostPhaseComfortSurvey u={u} phase={phase} theme={curTheme} onDone={handleComfort} /></div></>;
 
