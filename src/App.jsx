@@ -2925,7 +2925,7 @@ function PatternsTab({ user, u }) {
     </div>
   );
 
-  const dims = [{ l:"Speed", v:stats.cog.speed },{ l:"Accuracy", v:stats.cog.accuracy },{ l:"Memory", v:stats.cog.memory },{ l:"Inhibition", v:stats.cog.inhibition },{ l:"Pattern", v:stats.cog.pattern },{ l:"Arithmetic", v:stats.cog.arithmetic },{ l:"Attention", v:stats.cog.attention },{ l:"Processing", v:stats.cog.processing }];
+  const dims = [{ l:"Attention", v:stats.cog.attention||0 },{ l:"Inhibition", v:stats.cog.inhibition||0 },{ l:"Analysis", v:stats.cog.analysis||0 },{ l:"Reading", v:stats.cog.reading||0 },{ l:"Decision", v:stats.cog.decision||0 },{ l:"Precision", v:stats.cog.precision||0 },{ l:"Memory", v:stats.cog.memory||0 },{ l:"Navigation", v:stats.cog.navigation||0 }];
 
   return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
@@ -3334,30 +3334,30 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
       </Card>
       {stats ? (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: L.spMd, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(130px,1fr))", gap: L.spMd, marginBottom: 20 }}>
             {[{ l:"Best Theme", v:stats.betterTheme, c:stats.betterTheme==="dark"?u.accent2:u.gold }, { l:"Dark Accuracy", v:fmtPct(stats.accDk), c:u.teal }, { l:"Light Accuracy", v:fmtPct(stats.accLt), c:u.orange }, { l:"Sessions", v:stats.n, c:u.green }].map(({ l, v, c }) => (
-              <Card key={l} u={u} style={{ padding: L.spLg, position: "relative", overflow: "hidden" }}>
+              <Card key={l} u={u} style={{ padding: L.spMd, position: "relative", overflow: "hidden" }}>
                 <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: c }} />
-                <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: .8, textTransform: "uppercase", marginBottom: 8 }}>{l}</div>
-                <div style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: c, letterSpacing: -.5, textTransform: "capitalize" }}>{v}</div>
+                <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: .8, textTransform: "uppercase", marginBottom: 6 }}>{l}</div>
+                <div style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: c, letterSpacing: -.5, textTransform: "capitalize" }}>{v}</div>
               </Card>
             ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: L.spMd, marginBottom: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: L.spMd, marginBottom: 20 }}>
             <Card u={u} style={{ padding: L.spLg, display: "flex", flexDirection: "column", alignItems: "center" }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Cognitive Profile</div>
-              <Radar u={u} dims={[{ l:"Speed", v:stats.cog.speed }, { l:"Accuracy", v:stats.cog.accuracy }, { l:"Memory", v:stats.cog.memory }, { l:"Inhibition", v:stats.cog.inhibition }, { l:"Pattern", v:stats.cog.pattern }, { l:"Arithmetic", v:stats.cog.arithmetic }, { l:"Attention", v:stats.cog.attention }, { l:"Processing", v:stats.cog.processing }]} size={160} />
+              <Radar u={u} dims={[{ l:"Attention", v:stats.cog.attention||0 }, { l:"Inhibition", v:stats.cog.inhibition||0 }, { l:"Analysis", v:stats.cog.analysis||0 }, { l:"Reading", v:stats.cog.reading||0 }, { l:"Decision", v:stats.cog.decision||0 }, { l:"Precision", v:stats.cog.precision||0 }, { l:"Memory", v:stats.cog.memory||0 }, { l:"Navigation", v:stats.cog.navigation||0 }]} size={160} />
             </Card>
             <Card u={u} style={{ padding: L.spLg }}>
-              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spLg }}>Dark vs Light Comparison</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: L.spMd, marginBottom: L.spMd }}>
+              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Dark vs Light Comparison</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: L.spSm }}>
                 {[{ l:"Accuracy", d:fmtPct(stats.accDk), li:fmtPct(stats.accLt) }, { l:"Mental Effort", d:fmt(stats.efDk), li:fmt(stats.efLt) }, { l:"Avg RT", d:fmtMs(stats.rtDk), li:fmtMs(stats.rtLt) }].map(({ l, d, li }) => (
-                  <div key={l} style={{ textAlign: "center" }}>
-                    <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: .5, marginBottom: 10, textTransform: "uppercase" }}>{l}</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 6 }}>
+                  <div key={l} style={{ display:"flex", alignItems:"center", gap:L.spSm }}>
+                    <div style={{ fontSize: L.fsXs, color: u.text3, width:80, flexShrink:0 }}>{l}</div>
+                    <div style={{ display:"flex", gap:6, flex:1 }}>
                       {[{ lbl:"🌙", val:d, c:u.accent2 }, { lbl:"☀️", val:li, c:u.gold }].map(({ lbl, val, c }) => (
-                        <div key={lbl} style={{ padding: "6px 4px", borderRadius: R.md, background: `${c}12`, border: `1px solid ${c}22`, textAlign: "center" }}>
-                          <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 3 }}>{lbl}</div>
+                        <div key={lbl} style={{ flex:1, padding: "5px 6px", borderRadius: R.md, background: `${c}12`, border: `1px solid ${c}22`, textAlign: "center" }}>
+                          <div style={{ fontSize: L.fsXs, color: u.text3 }}>{lbl}</div>
                           <div style={{ fontSize: L.fsSm, fontWeight: L.fwBold, color: c }}>{val}</div>
                         </div>
                       ))}
@@ -3369,13 +3369,13 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
                 <>
                   <div style={{ borderTop: `1px solid ${u.border}`, paddingTop: L.spMd, marginTop: L.spSm }}>
                     <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: .5, textTransform: "uppercase", marginBottom: 10 }}>Perceived Comfort & Fatigue</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
-                      {[{ l:"Visual Comfort", dk:stats.comfortDk.vc, lt:stats.comfortLt.vc, higher:"better" }, { l:"Eye Strain", dk:stats.comfortDk.es, lt:stats.comfortLt.es, higher:"worse" }, { l:"Fatigue", dk:stats.comfortDk.fa, lt:stats.comfortLt.fa, higher:"worse" }, { l:"Satisfaction", dk:stats.comfortDk.sa, lt:stats.comfortLt.sa, higher:"better" }].map(({ l, dk, lt, higher }) => (
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(100px,1fr))", gap: 8 }}>
+                      {[{ l:"Visual Comfort", dk:stats.comfortDk.vc, lt:stats.comfortLt.vc }, { l:"Eye Strain", dk:stats.comfortDk.es, lt:stats.comfortLt.es }, { l:"Fatigue", dk:stats.comfortDk.fa, lt:stats.comfortLt.fa }, { l:"Satisfaction", dk:stats.comfortDk.sa, lt:stats.comfortLt.sa }].map(({ l, dk, lt }) => (
                         <div key={l} style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 8, lineHeight: 1.3 }}>{l}</div>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 4 }}>
+                          <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 6, lineHeight: 1.3 }}>{l}</div>
+                          <div style={{ display: "flex", gap: 4 }}>
                             {[{ lbl:"🌙", val:dk, c:u.accent2 }, { lbl:"☀️", val:lt, c:u.gold }].map(({ lbl, val, c }) => (
-                              <div key={lbl} style={{ padding: "5px 2px", borderRadius: R.sm, background: `${c}10`, border: `1px solid ${c}20`, textAlign: "center" }}>
+                              <div key={lbl} style={{ flex:1, padding: "5px 2px", borderRadius: R.sm, background: `${c}10`, border: `1px solid ${c}20`, textAlign: "center" }}>
                                 <div style={{ fontSize: L.fsXs, color: u.text3 }}>{lbl}</div>
                                 <div style={{ fontSize: L.fsSm, fontWeight: L.fwBold, color: c }}>{val ? fmt(val, 1) : "—"}</div>
                               </div>
@@ -3389,7 +3389,6 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
               ) : null}
             </Card>
           </div>
-          <Btn u={u} v="ghost" onClick={onProfile} sm>View Full Pattern Analysis with AI Insights →</Btn>
         </>
       ) : (
         <Card u={u} style={{ padding: L.spXl, textAlign: "center" }}>
