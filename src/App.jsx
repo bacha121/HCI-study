@@ -3153,8 +3153,7 @@ function ObjectiveTab({ user, u }) {
           <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Per-Task Performance</div>
           <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Accuracy and response time for each task type</div>
         </div>
-        <div style={{ overflowX:"auto" }}>
-          <div className="tbl-wrap">
+        <div className="tbl-wrap">
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
@@ -3186,7 +3185,6 @@ function ObjectiveTab({ user, u }) {
   );
 }
 
-// ─── WORKLOAD TAB ─────────────────────────────────────────────────────────────────
 // ─── WORKLOAD TAB ─────────────────────────────────────────────────────────────────
 function WorkloadTab({ user, u }) {
   const stats    = useMemo(() => computeStats(user), [user]);
@@ -3705,7 +3703,6 @@ function AnalysisTab({ u, users }) {
           <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text }}>Descriptive Statistics</div>
           <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>Mean · Median · SD · Min · Max by theme condition</div>
         </div>
-        <div style={{ overflowX: "auto" }}>
           <div className="tbl-wrap">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -3748,7 +3745,6 @@ function AnalysisTab({ u, users }) {
           <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text }}>Paired Sample t-Tests</div>
           <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>Within-subjects Dark vs Light · α = 0.05 · Cohen's d · 95% CI · Normality (Jarque-Bera)</div>
         </div>
-        <div style={{ overflowX: "auto" }}>
           <div className="tbl-wrap">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
@@ -4110,8 +4106,7 @@ function ParticipantHeatmap({ u, users }) {
         <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Participant × Task Accuracy</div>
         <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Combined dark + light accuracy · Red → Yellow → Green</div>
       </div>
-      <div style={{ overflowX:"auto" }}>
-        <div className="tbl-wrap">
+      <div className="tbl-wrap">
         <table style={{ width:"100%", borderCollapse:"collapse", fontFamily:L.font }}>
           <thead><tr>
             <th style={{ padding:"8px 12px", fontSize:L.fsXs, color:u.text3, textAlign:"left", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi, minWidth:100 }}>Participant</th>
@@ -4746,7 +4741,6 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             <ParticipantHeatmap u={u} users={users} />
             <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Per-Task Breakdown</div>
-              <div style={{ overflowX: "auto" }}>
                 <div className="tbl-wrap">
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: L.font }}>
                   <thead>
@@ -4773,7 +4767,6 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: L.spMd }}>
               {[{ label:"RT Distribution — Dark", rts:dkRTs, c:u.accent2 }, { label:"RT Distribution — Light", rts:ltRTs, c:u.gold }].map(({ label, rts, c }) => (
                 <Card key={label} u={u} style={{ padding: L.spLg }}>
-                  <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>{label}</div>
                   {rts.length > 0 ? <HBar u={u} data={[{ l:"<300ms", v:rts.filter(r=>r<300).length, c:u.green },{ l:"300–500ms", v:rts.filter(r=>r>=300&&r<500).length, c },{ l:"500–800ms", v:rts.filter(r=>r>=500&&r<800).length, c:u.orange },{ l:">800ms", v:rts.filter(r=>r>=800).length, c:u.red }]} /> : <p style={{ color:u.text3, fontSize:L.fsSm }}>No RT data yet.</p>}
                 </Card>
               ))}
