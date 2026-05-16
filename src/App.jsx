@@ -36,14 +36,25 @@ input[type=range]{accent-color:#4f8ef7;cursor:pointer;width:100%;}
   .rsp-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
   .rsp-full{width:100% !important;min-width:0 !important;}
   .rsp-text-sm{font-size:13px !important;}
+  .rsp-stack{flex-direction:column !important;align-items:stretch !important;}
   table{font-size:12px !important;}
   th,td{padding:6px 8px !important;}
   .grid-2{grid-template-columns:1fr !important;}
   .likert-grid{grid-template-columns:1fr !important;}
+  /* Prevent iOS zoom on inputs */
+  input,textarea,select{font-size:16px !important;}
+  /* Ensure tap targets */
+  button{min-height:40px;}
+}
+@media(max-width:400px){
+  .au{padding:10px !important;}
+  h1{letter-spacing:-.5px !important;}
 }
 @media(min-width:640px){
   .rsp-show-mobile{display:none !important;}
 }
+/* All tables scrollable by default */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;}
 `;
 
 // ─── DESIGN ──────────────────────────────────────────────────────────────────────
@@ -1564,11 +1575,11 @@ function VisualSearchTask({ t, data, idx, total, onDone, tracker }) {
         <span style={{ fontSize: L.fsSm, color: t.textMuted }}>Target: <strong style={{ fontSize: 22, fontFamily: L.mono, color: t.accent, marginLeft: 8 }}>{data.tgt}</strong></span>
         <span style={{ fontSize: L.fsSm, color: t.textMuted, marginLeft: 20 }}>Found: <strong style={{ color: t.text }}>{found}</strong>/{data.tc}</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: L.spSm, marginBottom: L.spMd }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: "clamp(4px,1.5vw,10px)", marginBottom: L.spMd }}>
         {items.map(item => {
           let bg = t.surface, color = t.text, bdr = t.border;
           if (item.hit) { bg = item.ok ? t.successBg : t.errorBg; color = item.ok ? t.success : t.error; bdr = item.ok ? t.success : t.error; }
-          return <button key={item.id} onClick={() => tap(item.id)} style={{ height: 54, borderRadius: R.sm, border: `1px solid ${bdr}`, background: bg, color, fontFamily: L.mono, fontSize: L.fsMd, fontWeight: L.fwBold, cursor: item.hit ? "default" : "pointer", transition: "all .1s" }}>{item.ch}</button>;
+          return <button key={item.id} onClick={() => tap(item.id)} style={{ height: "clamp(40px,10vw,54px)", borderRadius: R.sm, border: `1px solid ${bdr}`, background: bg, color, fontFamily: L.mono, fontSize: "clamp(13px,3vw,18px)", fontWeight: L.fwBold, cursor: item.hit ? "default" : "pointer", transition: "all .1s" }}>{item.ch}</button>;
         })}
       </div>
       <div style={{ textAlign: "center" }}>
@@ -1603,9 +1614,9 @@ function FlankerTask({ t, data, idx, total, onDone, tracker }) {
       </div>
       <p style={{ fontSize: L.fsXs, color: t.textFaint, marginBottom: L.spMd }}>{data.cong ? "Congruent" : "Incongruent"} — respond as quickly as possible</p>
       {ph === "stim" && !done && (
-        <div style={{ display: "flex", gap: L.spLg, justifyContent: "center" }}>
+        <div style={{ display: "flex", gap: L.spLg, justifyContent: "center", padding: `0 ${L.spMd}px` }}>
           {[{ dir: "L", label: "← Left" }, { dir: "R", label: "Right →" }].map(({ dir, label }) => (
-            <button key={dir} onClick={() => respond(dir)} style={{ height: L.btnH, minWidth: 140, borderRadius: R.md, border: "none", background: t.accent, color: t.accentFg, fontSize: L.fsMd, fontWeight: L.fwSemi, fontFamily: L.font, cursor: "pointer" }}>{label}</button>
+            <button key={dir} onClick={() => respond(dir)} style={{ height: "clamp(48px,12vw,56px)", flex:1, maxWidth:180, borderRadius: R.md, border: "none", background: t.accent, color: t.accentFg, fontSize: "clamp(14px,4vw,18px)", fontWeight: L.fwSemi, fontFamily: L.font, cursor: "pointer" }}>{label}</button>
           ))}
         </div>
       )}
@@ -2258,26 +2269,27 @@ const TCOMPS = { visual_search:VisualSearchTask, flanker:FlankerTask, n_back:NBa
 
 // ─── SURVEYS ─────────────────────────────────────────────────────────────────────
 function NasaTLXScreen({ u, onDone }) {
+  const { mobile } = useBreakpoint();
   const [v, setV] = useState({ md: 10, pd: 10, td: 10, pe: 10, ef: 10, fr: 10 });
   const DS2 = [{ k:"md", l:"Mental Demand", d:"Mental and perceptual activity required." }, { k:"pd", l:"Physical Demand", d:"Physical activity required." }, { k:"td", l:"Temporal Demand", d:"Time pressure felt during the tasks." }, { k:"pe", l:"Performance", d:"How successful were you in accomplishing the goals?" }, { k:"ef", l:"Effort", d:"Mental and physical work required." }, { k:"fr", l:"Frustration", d:"Stress, irritation, or discouragement felt." }];
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", fontFamily: L.font }}>
       <div style={{ textAlign: "center", marginBottom: L.spXl }}>
-        <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>Experiment Complete — Final Survey</div>
-        <h2 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: 0 }}>NASA Task Load Index</h2>
-        <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 8 }}>Rate each dimension 1 (Low) → 20 (High) based on your <strong style={{ color: u.text }}>overall experience</strong> across both phases</p>
+        <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>Phase Complete — Workload Survey</div>
+        <h2 style={{ fontSize: mobile ? L.fsLg : L.fsXl, fontWeight: L.fwBold, color: u.text, margin: 0 }}>NASA Task Load Index</h2>
+        <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 8, padding: `0 ${mobile ? 8 : 0}px` }}>Rate each dimension 1 (Low) → 20 (High) based on your experience during this phase</p>
       </div>
       {DS2.map(dim => (
         <Card key={dim.k} u={u} style={{ marginBottom: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: L.spMd }}>
-            <div>
-              <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text }}>{dim.l}</div>
+            <div style={{ flex: 1, paddingRight: 12 }}>
+              <div style={{ fontSize: mobile ? L.fsSm : L.fsBase, fontWeight: L.fwSemi, color: u.text }}>{dim.l}</div>
               <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>{dim.d}</div>
             </div>
-            <div style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.accent, minWidth: 36, textAlign: "right" }}>{v[dim.k]}</div>
+            <div style={{ fontSize: mobile ? L.fsLg : L.fsXl, fontWeight: L.fwBold, color: u.accent, minWidth: 36, textAlign: "right" }}>{v[dim.k]}</div>
           </div>
-          <input type="range" min={1} max={20} step={1} value={v[dim.k]} onChange={e => setV(p => ({ ...p, [dim.k]: +e.target.value }))} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: L.fsXs, color: u.text3, marginTop: 4 }}><span>1 — Low</span><span>10 — Moderate</span><span>20 — High</span></div>
+          <input type="range" min={1} max={20} step={1} value={v[dim.k]} onChange={e => setV(p => ({ ...p, [dim.k]: +e.target.value }))} style={{ width: "100%" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: L.fsXs, color: u.text3, marginTop: 4 }}><span>1 — Low</span>{!mobile && <span>10 — Moderate</span>}<span>20 — High</span></div>
         </Card>
       ))}
       <div style={{ textAlign: "center", marginTop: L.spXl }}>
@@ -3095,6 +3107,7 @@ function ObjectiveTab({ user, u }) {
           <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Dark vs Light Comparison</div>
           <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Objective performance across both theme conditions</div>
         </div>
+        <div className="tbl-wrap">
         <table style={{ width:"100%", borderCollapse:"collapse" }}>
           <thead>
             <tr>
@@ -3141,6 +3154,7 @@ function ObjectiveTab({ user, u }) {
           <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Accuracy and response time for each task type</div>
         </div>
         <div style={{ overflowX:"auto" }}>
+          <div className="tbl-wrap">
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
@@ -3204,7 +3218,7 @@ function WorkloadTab({ user, u }) {
         sub="NASA Task Load Index collected after each phase. Scale 1–20. Lower = less workload (except Performance where higher = better)." />
 
       {/* Total score cards */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:L.spMd, marginBottom:20 }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:L.spMd, marginBottom:20 }}>
         {[{ label:"🌙 Dark Mode", nasa:nasaDkObj, color:colDk }, { label:"☀️ Light Mode", nasa:nasaLtObj, color:colLt }].map(({ label, nasa, color }) => (
           <Card key={label} u={u} style={{ padding:L.spLg, textAlign:"center", borderTop:`3px solid ${color}` }}>
             <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text2, marginBottom:8 }}>{label}</div>
@@ -3340,7 +3354,7 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
                 {[{ l:"Accuracy", d:fmtPct(stats.accDk), li:fmtPct(stats.accLt) }, { l:"Mental Effort", d:fmt(stats.efDk), li:fmt(stats.efLt) }, { l:"Avg RT", d:fmtMs(stats.rtDk), li:fmtMs(stats.rtLt) }].map(({ l, d, li }) => (
                   <div key={l} style={{ textAlign: "center" }}>
                     <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: .5, marginBottom: 10, textTransform: "uppercase" }}>{l}</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 6 }}>
                       {[{ lbl:"🌙", val:d, c:u.accent2 }, { lbl:"☀️", val:li, c:u.gold }].map(({ lbl, val, c }) => (
                         <div key={lbl} style={{ padding: "6px 4px", borderRadius: R.md, background: `${c}12`, border: `1px solid ${c}22`, textAlign: "center" }}>
                           <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 3 }}>{lbl}</div>
@@ -3359,7 +3373,7 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
                       {[{ l:"Visual Comfort", dk:stats.comfortDk.vc, lt:stats.comfortLt.vc, higher:"better" }, { l:"Eye Strain", dk:stats.comfortDk.es, lt:stats.comfortLt.es, higher:"worse" }, { l:"Fatigue", dk:stats.comfortDk.fa, lt:stats.comfortLt.fa, higher:"worse" }, { l:"Satisfaction", dk:stats.comfortDk.sa, lt:stats.comfortLt.sa, higher:"better" }].map(({ l, dk, lt, higher }) => (
                         <div key={l} style={{ textAlign: "center" }}>
                           <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 8, lineHeight: 1.3 }}>{l}</div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 4 }}>
                             {[{ lbl:"🌙", val:dk, c:u.accent2 }, { lbl:"☀️", val:lt, c:u.gold }].map(({ lbl, val, c }) => (
                               <div key={lbl} style={{ padding: "5px 2px", borderRadius: R.sm, background: `${c}10`, border: `1px solid ${c}20`, textAlign: "center" }}>
                                 <div style={{ fontSize: L.fsXs, color: u.text3 }}>{lbl}</div>
@@ -3693,6 +3707,7 @@ function AnalysisTab({ u, users }) {
           <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>Mean · Median · SD · Min · Max by theme condition</div>
         </div>
         <div style={{ overflowX: "auto" }}>
+          <div className="tbl-wrap">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
@@ -3735,6 +3750,7 @@ function AnalysisTab({ u, users }) {
           <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>Within-subjects Dark vs Light · α = 0.05 · Cohen's d · 95% CI · Normality (Jarque-Bera)</div>
         </div>
         <div style={{ overflowX: "auto" }}>
+          <div className="tbl-wrap">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>{["Variable","🌙 Mean","☀️ Mean","Δ Mean","95% CI","t","df","p","d","Effect","JB Norm.","Result"].map(h => <th key={h} style={thS}>{h}</th>)}</tr>
@@ -4096,6 +4112,7 @@ function ParticipantHeatmap({ u, users }) {
         <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Combined dark + light accuracy · Red → Yellow → Green</div>
       </div>
       <div style={{ overflowX:"auto" }}>
+        <div className="tbl-wrap">
         <table style={{ width:"100%", borderCollapse:"collapse", fontFamily:L.font }}>
           <thead><tr>
             <th style={{ padding:"8px 12px", fontSize:L.fsXs, color:u.text3, textAlign:"left", borderBottom:`1px solid ${u.border}`, fontWeight:L.fwSemi, minWidth:100 }}>Participant</th>
@@ -4288,37 +4305,28 @@ function ReportScreen({ user, u, onBack }) {
       <div id="report-root" style={{ maxWidth:800, margin:"0 auto", paddingTop:60 }}>
 
         {/* ── Cover header ── */}
-        <div style={{ background:"linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)", padding:"48px 56px 40px", color:"#fff" }}>
-          <div style={{ fontSize:11, letterSpacing:3, color:"#93C5FD", textTransform:"uppercase", marginBottom:20 }}>CogBench · Cognitive Performance Report</div>
-          <div style={{ fontSize:34, fontWeight:900, letterSpacing:-1, marginBottom:8, lineHeight:1.1 }}>{user.name}</div>
-          <div style={{ fontSize:14, color:"#CBD5E1", marginBottom:32 }}>
-            Completed {dateStr} &nbsp;·&nbsp; Condition: {user.orderGroup === "DL" ? "Dark → Light" : "Light → Dark"}
+        <div style={{ background:"linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)", padding:"36px 32px 32px", color:"#fff" }}>
+          <div style={{ fontSize:11, letterSpacing:3, color:"#93C5FD", textTransform:"uppercase", marginBottom:16 }}>CogBench · Cognitive Performance Report</div>
+          <div style={{ fontSize:28, fontWeight:900, letterSpacing:-1, marginBottom:6, lineHeight:1.1 }}>{user.name}</div>
+          <div style={{ fontSize:13, color:"#CBD5E1", marginBottom:24 }}>
+            Completed {dateStr} &nbsp;·&nbsp; {user.orderGroup === "DL" ? "Dark → Light" : "Light → Dark"}
           </div>
           {/* Optimal interface */}
-          <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"20px 24px", border:"1px solid rgba(255,255,255,0.15)", backdropFilter:"blur(10px)" }}>
+          <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"16px 20px", border:"1px solid rgba(255,255,255,0.15)" }}>
             <div style={{ fontSize:11, letterSpacing:2, color:"#93C5FD", textTransform:"uppercase", marginBottom:8 }}>Your Recommended Interface</div>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
-              <div style={{ fontSize:24, fontWeight:900, color:"#fff" }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</div>
-              <div style={{ display:"flex", gap:24 }}>
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:26, fontWeight:900, color:"#60A5FA" }}>{pct(stats.accDk)}</div>
-                  <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>🌙 Dark</div>
-                </div>
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:26, fontWeight:900, color:"#FCD34D" }}>{pct(stats.accLt)}</div>
-                  <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>☀️ Light</div>
-                </div>
-                {stats.rtDk && <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:26, fontWeight:900, color:"#6EE7B7" }}>{ms(Math.min(stats.rtDk, stats.rtLt))}</div>
-                  <div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Best RT</div>
-                </div>}
+              <div style={{ fontSize:22, fontWeight:900, color:"#fff" }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</div>
+              <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+                <div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:900, color:"#60A5FA" }}>{pct(stats.accDk)}</div><div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>🌙 Dark</div></div>
+                <div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:900, color:"#FCD34D" }}>{pct(stats.accLt)}</div><div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>☀️ Light</div></div>
+                {stats.rtDk && <div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:900, color:"#6EE7B7" }}>{ms(Math.min(stats.rtDk, stats.rtLt))}</div><div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Best RT</div></div>}
               </div>
             </div>
           </div>
         </div>
 
         {/* ── Body ── */}
-        <div style={{ padding:"8px 56px 64px" }}>
+        <div style={{ padding:"8px clamp(16px, 5vw, 56px) 64px" }}>
 
           {/* About this report */}
           <SectionTitle>About This Report</SectionTitle>
@@ -4328,7 +4336,7 @@ function ReportScreen({ user, u, onBack }) {
 
           {/* Profile */}
           <SectionTitle>Your Profile</SectionTitle>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"6px 32px" }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:"6px 32px" }}>
             {[
               ["Age",              dem.age||"—"],
               ["Gender",           dem.gender||"—"],
@@ -4384,7 +4392,7 @@ function ReportScreen({ user, u, onBack }) {
 
           {/* Dark vs Light comparison */}
           <SectionTitle color="#7C3AED">Dark vs Light Comparison</SectionTitle>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:12, marginBottom:16 }}>
             {[
               { label:"🌙 Dark Mode Accuracy",  value:pct(stats.accDk), bar:stats.accDk,    color:"#1D4ED8" },
               { label:"☀️ Light Mode Accuracy", value:pct(stats.accLt), bar:stats.accLt,    color:"#D97706" },
@@ -4415,7 +4423,7 @@ function ReportScreen({ user, u, onBack }) {
                     <span style={{ fontWeight:600, color:"#111827" }}>{label}</span>
                     <span style={{ color:"#6B7280" }}>{higherBetter?"higher is better":"lower is better"}</span>
                   </div>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
                     {[{ v:dv, c:"#1D4ED8", l:"🌙 Dark", better:dkBetter }, { v:lv, c:"#D97706", l:"☀️ Light", better:ltBetter }].map(({ v, c, l, better }) => (
                       <div key={l} style={{ padding:"8px 12px", borderRadius:8, background:"#F8FAFC", border:`1px solid ${better?"#10B981":"#E2E8F0"}` }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5, fontSize:12 }}>
@@ -4437,7 +4445,7 @@ function ReportScreen({ user, u, onBack }) {
             <SectionTitle color="#DC2626">Cognitive Workload (NASA-TLX)</SectionTitle>
             <InsightBox text={insights.workloadInsight} color="#DC2626" />
             {/* Dark vs Light total scores */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, marginBottom:16 }}>
               {[{ label:"🌙 Dark Mode", obj:nasaDkObj, col:"#1D4ED8" }, { label:"☀️ Light Mode", obj:nasaLtObj, col:"#D97706" }].map(({ label, obj, col }) => (
                 <div key={label} style={{ padding:"14px 16px", borderRadius:10, background:"#F8FAFC", border:`2px solid ${col}30`, textAlign:"center" }}>
                   <div style={{ fontSize:11, color:"#6B7280", marginBottom:6 }}>{label}</div>
@@ -4451,7 +4459,7 @@ function ReportScreen({ user, u, onBack }) {
               ))}
             </div>
             {/* Per-dimension comparison */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
               {NASA_DIMS.map(({ k, l }) => {
                 const dv = nasaDkObj?.[k], lv = nasaLtObj?.[k];
                 const hasBoth = dv != null && lv != null;
@@ -4652,7 +4660,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:String(Math.round(avg(dkT.map(t => t.err||0)))), li:String(Math.round(avg(ltT.map(t => t.err||0)))) }].map(({ l, d, li }) => (
                   <div key={l} style={{ marginBottom: 10 }}>
                     <span style={{ fontSize: L.fsXs, color: u.text3, display:"block", marginBottom:4 }}>{l}</span>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 8 }}>
                       <div style={{ padding: "6px 10px", borderRadius: R.sm, background: `${u.accent2}14`, border: `1px solid ${u.accent2}24`, textAlign: "center" }}><div style={{ fontSize: L.fsXs, color: u.text3 }}>🌙 Dark</div><div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.accent2 }}>{d}</div></div>
                       <div style={{ padding: "6px 10px", borderRadius: R.sm, background: `${u.gold}14`, border: `1px solid ${u.gold}24`, textAlign: "center" }}><div style={{ fontSize: L.fsXs, color: u.text3 }}>☀️ Light</div><div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.gold }}>{li}</div></div>
                     </div>
@@ -4740,6 +4748,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Per-Task Breakdown</div>
               <div style={{ overflowX: "auto" }}>
+                <div className="tbl-wrap">
                 <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: L.font }}>
                   <thead>
                     <tr style={{ borderBottom: `1px solid ${u.border}` }}>
@@ -4860,7 +4869,7 @@ function DemographicsSc({ u, onDone }) {
 function InstructionsSc({ u, phase, theme, onBegin }) {
   const [read, setRead] = useState(false);
   return (
-    <div style={{ maxWidth: 560, margin: "0 auto", padding: `${L.spXl}px ${L.spLg}px`, fontFamily: L.font }}>
+    <div style={{ maxWidth: 560, margin: "0 auto", padding: `${L.spXl}px clamp(14px,4vw,${L.spLg}px)`, fontFamily: L.font }}>
       <div style={{ textAlign: "center", marginBottom: 28 }}>
         <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8 }}>Phase {phase} Instructions</div>
         <h2 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: "0 0 10px" }}>{theme.charAt(0).toUpperCase() + theme.slice(1)} Mode Phase</h2>
