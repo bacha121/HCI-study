@@ -1281,7 +1281,7 @@ function computeStats(user) {
     attention:  avg([...(byTask.visual_search||[]),...(byTask.trail||[])].map(t => t.acc || 0)) || 0,
     processing: clamp(1 - avg([...(byTask.stroop||[]),...(byTask.flanker||[])].filter(t => t.rt).map(t => t.rt / 1500)), 0, 1) || 0,
   };
-  return { all, dk, lt, dkRTs, ltRTs, byTask, tperf, accDk, accLt, efDk, efLt, rtDk, rtLt, betterTheme, cog, comfortDk, comfortLt, n: exps.length };
+  return { all, dk, lt, dkRTs, ltRTs, byTask, tperf, accDk, accLt, efDk, efLt, rtDk, rtLt, betterTheme, cog, comfortDk, comfortLt, nasaTotalDk, nasaTotalLt, nasaDk, nasaLt, errDk, errLt, n: exps.length };
 }
 
 // ─── UI ATOMS ─────────────────────────────────────────────────────────────────────
@@ -3107,9 +3107,11 @@ function ObjectiveTab({ user, u }) {
           </thead>
           <tbody>
             {[
-              { metric:"Accuracy",         dk:stats.accDk,  lt:stats.accLt,  fmt:fmtPct,  higherBetter:true  },
-              { metric:"Response Time",    dk:stats.rtDk,   lt:stats.rtLt,   fmt:fmtMs,   higherBetter:false },
-              { metric:"Mental Demand",    dk:stats.efDk,   lt:stats.efLt,   fmt:v=>fmt(v,1), higherBetter:false },
+              { metric:"Accuracy",      dk:stats.accDk,       lt:stats.accLt,       fmt:fmtPct,               higherBetter:true  },
+              { metric:"Response Time", dk:stats.rtDk,        lt:stats.rtLt,        fmt:fmtMs,                higherBetter:false },
+              { metric:"Error Count",   dk:stats.errDk,       lt:stats.errLt,       fmt:v=>v!=null?Math.round(v)+"":"—", higherBetter:false },
+              { metric:"NASA Workload", dk:stats.nasaTotalDk, lt:stats.nasaTotalLt, fmt:v=>v!=null?v.toFixed(1):"—",     higherBetter:false },
+              { metric:"Mental Demand", dk:stats.efDk,        lt:stats.efLt,        fmt:v=>fmt(v,1),          higherBetter:false },
             ].map(({ metric, dk, lt, fmt:f, higherBetter }) => {
               const diff = dk!=null && lt!=null ? dk-lt : null;
               const dkBetter = diff!=null && (higherBetter ? diff>0 : diff<0);
@@ -3171,100 +3173,104 @@ function ObjectiveTab({ user, u }) {
 }
 
 // ─── WORKLOAD TAB ─────────────────────────────────────────────────────────────────
+// ─── WORKLOAD TAB ─────────────────────────────────────────────────────────────────
 function WorkloadTab({ user, u }) {
-  const nasa = (user.experiments || []).find(e => e.nasaTLX)?.nasaTLX;
+  const stats    = useMemo(() => computeStats(user), [user]);
+  const exps     = user.experiments || [];
+  const nasaDkObj = exps.find(e => e.theme === "dark"  && e.nasaTLX)?.nasaTLX;
+  const nasaLtObj = exps.find(e => e.theme === "light" && e.nasaTLX)?.nasaTLX;
+  const hasData  = !!(nasaDkObj || nasaLtObj);
+  const colDk = u.accent2, colLt = u.gold;
 
   const DIMS = [
-    { key:"md", label:"Mental Demand",   icon:"🧠", desc:"How much mental and perceptual activity was required? Was the task easy or demanding?", lowerBetter:true  },
-    { key:"pd", label:"Physical Demand", icon:"💪", desc:"How much physical activity was required? Was the task restful or demanding?",           lowerBetter:true  },
-    { key:"td", label:"Temporal Demand", icon:"⏱", desc:"How much time pressure did you feel? Was the pace relaxed or rushed?",                   lowerBetter:true  },
-    { key:"pe", label:"Performance",     icon:"🎯", desc:"How successful were you in meeting the task goals? Higher scores indicate better self-rated performance.", lowerBetter:false },
-    { key:"ef", label:"Effort",          icon:"⚡", desc:"How hard did you have to work to achieve your level of performance?",                    lowerBetter:true  },
-    { key:"fr", label:"Frustration",     icon:"😤", desc:"How irritated, stressed, or annoyed were you? Higher scores indicate more frustration.", lowerBetter:true  },
+    { key:"md", label:"Mental Demand",   desc:"How mentally demanding was the task?",                    lowerBetter:true  },
+    { key:"pd", label:"Physical Demand", desc:"How physically demanding was the task?",                   lowerBetter:true  },
+    { key:"td", label:"Temporal Demand", desc:"How hurried or rushed was the pace?",                      lowerBetter:true  },
+    { key:"pe", label:"Performance",     desc:"How successful were you in accomplishing the task?",       lowerBetter:false },
+    { key:"ef", label:"Effort",          desc:"How hard did you have to work to accomplish your level of performance?", lowerBetter:true },
+    { key:"fr", label:"Frustration",     desc:"How irritated, stressed or annoyed were you?",             lowerBetter:true  },
   ];
 
-  const col = (val, lowerBetter) => {
-    const p = val / 20;
-    return lowerBetter ? (p < 0.35 ? u.green : p < 0.65 ? u.orange : u.red)
-                       : (p > 0.65 ? u.green : p > 0.35 ? u.orange : u.red);
-  };
-  const lbl = (val, lowerBetter) => {
-    const p = val / 20;
-    return lowerBetter ? (p < 0.35 ? "Low" : p < 0.65 ? "Moderate" : "High")
-                       : (p > 0.65 ? "High" : p > 0.35 ? "Moderate" : "Low");
-  };
+  if (!hasData) return (
+    <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }}>
+      <SectionHdr u={u} eyebrow="Self-Report" title="Workload Assessment" />
+      <EmptyState u={u} icon="📊" title="No workload data yet" body="Complete both experiment phases to unlock your NASA-TLX results." />
+    </div>
+  );
 
   return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
-      <SectionHdr u={u} eyebrow="Self-Report" title="Workload Assessment" sub="NASA Task Load Index — your subjective workload ratings collected at the end of the experiment. Scale: 1 (low) to 20 (high)." />
+      <SectionHdr u={u} eyebrow="Self-Report" title="Workload Assessment"
+        sub="NASA Task Load Index collected after each phase. Scale 1–20. Lower = less workload (except Performance where higher = better)." />
 
-      {!nasa ? (
-        <EmptyState u={u} icon="📊" title="No workload data yet" body="Complete both experiment phases to unlock your NASA-TLX results." />
-      ) : (
-        <>
-          {/* Overall score */}
-          <Card u={u} style={{ padding:L.spLg, marginBottom:20 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:L.spXl, flexWrap:"wrap" }}>
-              <div style={{ textAlign:"center", minWidth:100 }}>
-                <div style={{ fontSize:56, fontWeight:L.fwBlack, color:u.accent, fontFamily:L.mono, lineHeight:1 }}>{nasa.totalScore?.toFixed(1)}</div>
-                <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:6 }}>Overall Score</div>
-              </div>
-              <div style={{ flex:1, minWidth:200 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", fontSize:L.fsXs, color:u.text3, marginBottom:6 }}>
-                  <span>1 — Very Low</span><span>10 — Moderate</span><span>20 — Very High</span>
-                </div>
-                <div style={{ height:14, background:u.fill, borderRadius:99, overflow:"hidden", border:`1px solid ${u.border}` }}>
+      {/* Total score cards */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:L.spMd, marginBottom:20 }}>
+        {[{ label:"🌙 Dark Mode", nasa:nasaDkObj, color:colDk }, { label:"☀️ Light Mode", nasa:nasaLtObj, color:colLt }].map(({ label, nasa, color }) => (
+          <Card key={label} u={u} style={{ padding:L.spLg, textAlign:"center", borderTop:`3px solid ${color}` }}>
+            <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text2, marginBottom:8 }}>{label}</div>
+            {nasa ? (
+              <>
+                <div style={{ fontSize:42, fontWeight:L.fwBlack, color, fontFamily:L.mono, lineHeight:1 }}>{nasa.totalScore?.toFixed(1)}</div>
+                <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:4 }}>/ 20 overall workload</div>
+                <div style={{ height:8, background:u.fill, borderRadius:99, overflow:"hidden", marginTop:L.spMd, border:`1px solid ${u.border}` }}>
                   <div style={{ height:"100%", width:`${((nasa.totalScore||0)/20)*100}%`, background:`linear-gradient(90deg,${u.green},${u.orange},${u.red})`, borderRadius:99, transition:"width .8s" }} />
                 </div>
-                <div style={{ marginTop:L.spMd, fontSize:L.fsSm, color:u.text2, lineHeight:1.65 }}>
-                  {(nasa.totalScore||0) < 7  ? "Your overall workload was low — the tasks felt manageable and relatively comfortable."
-                 : (nasa.totalScore||0) < 13 ? "Your overall workload was moderate — typical for focused cognitive tasks of this nature."
-                 :                             "Your overall workload was high — the tasks required significant mental effort and engagement."}
+                <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:6 }}>
+                  {nasa.totalScore < 7 ? "Low workload" : nasa.totalScore < 13 ? "Moderate workload" : "High workload"}
+                </div>
+              </>
+            ) : <div style={{ color:u.text3, fontSize:L.fsSm }}>Not yet collected</div>}
+          </Card>
+        ))}
+      </div>
+
+      {/* Winner callout */}
+      {nasaDkObj && nasaLtObj && (() => {
+        const dkLower = nasaDkObj.totalScore < nasaLtObj.totalScore;
+        const col = dkLower ? colDk : colLt;
+        return (
+          <Card u={u} style={{ padding:L.spMd, marginBottom:20, background:u.gradSoft, border:`1px solid ${u.accent}20` }}>
+            <div style={{ display:"flex", alignItems:"center", gap:L.spMd }}>
+              <span style={{ fontSize:24 }}>{dkLower ? "🌙" : "☀️"}</span>
+              <div>
+                <div style={{ fontSize:L.fsSm, fontWeight:L.fwBold, color:col }}>{dkLower ? "Dark Mode" : "Light Mode"} caused less cognitive workload</div>
+                <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:2 }}>
+                  {Math.abs(nasaDkObj.totalScore - nasaLtObj.totalScore).toFixed(1)} point difference · Lower workload means the interface felt easier and more natural
                 </div>
               </div>
             </div>
           </Card>
+        );
+      })()}
 
-          {/* Individual dimensions */}
-          <div style={{ display:"flex", flexDirection:"column", gap:L.spMd }}>
-            {DIMS.map(({ key, label, icon, desc, lowerBetter }) => {
-              const val = nasa[key];
-              if (val == null) return null;
-              const c = col(val, lowerBetter);
-              const l = lbl(val, lowerBetter);
-              return (
-                <Card key={key} u={u} style={{ padding:L.spLg, borderLeft:`3px solid ${c}` }}>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr auto", gap:L.spLg, alignItems:"start" }}>
-                    <div>
-                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                        <span style={{ fontSize:20 }}>{icon}</span>
-                        <span style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>{label}</span>
-                        <span style={{ fontSize:L.fsXs, padding:"2px 8px", borderRadius:R.pill, background:`${c}18`, color:c, border:`1px solid ${c}28`, fontWeight:L.fwSemi }}>{l}</span>
-                      </div>
-                      <div style={{ fontSize:L.fsSm, color:u.text3, marginBottom:L.spMd, lineHeight:1.5 }}>{desc}</div>
-                      <div style={{ height:8, background:u.fill, borderRadius:99, overflow:"hidden", border:`1px solid ${u.border}` }}>
-                        <div style={{ height:"100%", width:`${(val/20)*100}%`, background:c, borderRadius:99, transition:"width .8s" }} />
-                      </div>
-                      <div style={{ display:"flex", justifyContent:"space-between", marginTop:4, fontSize:L.fsXs, color:u.text3 }}>
-                        <span>1</span><span>10</span><span>20</span>
-                      </div>
-                    </div>
-                    <div style={{ textAlign:"center", minWidth:56 }}>
-                      <div style={{ fontSize:36, fontWeight:L.fwBlack, color:c, fontFamily:L.mono, lineHeight:1 }}>{val}</div>
-                      <div style={{ fontSize:L.fsXs, color:u.text3 }}>/20</div>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-
-          {/* Scale note */}
-          <div style={{ marginTop:L.spMd, padding:`${L.spSm}px ${L.spMd}px`, background:u.fill, borderRadius:R.md, fontSize:L.fsXs, color:u.text3 }}>
-            NASA-TLX (Task Load Index) is a widely used subjective workload assessment tool developed by NASA. Scores range from 1 (low) to 20 (high) per dimension. Note: for Performance, higher scores indicate you felt more successful.
-          </div>
-        </>
-      )}
+      {/* Per-dimension comparison */}
+      <Card u={u} style={{ padding:L.spLg }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 80px 80px", gap:L.spMd, marginBottom:L.spMd }}>
+          <div style={{ fontSize:L.fsXs, color:u.text3, fontWeight:L.fwSemi }}>Dimension</div>
+          <div style={{ textAlign:"center", fontSize:L.fsXs, fontWeight:L.fwBold, color:colDk }}>🌙 Dark</div>
+          <div style={{ textAlign:"center", fontSize:L.fsXs, fontWeight:L.fwBold, color:colLt }}>☀️ Light</div>
+        </div>
+        {DIMS.map(({ key, label, desc, lowerBetter }) => {
+          const dv = nasaDkObj?.[key] ?? null, lv = nasaLtObj?.[key] ?? null;
+          const dkB = dv!=null && lv!=null && (lowerBetter ? dv<lv : dv>lv);
+          const ltB = dv!=null && lv!=null && (lowerBetter ? lv<dv : lv>dv);
+          return (
+            <div key={key} style={{ display:"grid", gridTemplateColumns:"1fr 80px 80px", gap:L.spMd, alignItems:"center", padding:`${L.spMd}px 0`, borderBottom:`1px solid ${u.border}` }}>
+              <div>
+                <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{label}</div>
+                <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:2, lineHeight:1.4 }}>{desc}</div>
+              </div>
+              {[{ v:dv, c:dkB?u.green:colDk, better:dkB }, { v:lv, c:ltB?u.green:colLt, better:ltB }].map((s, i) => (
+                <div key={i} style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:20, fontWeight:L.fwBlack, color:s.v!=null?s.c:u.text3, fontFamily:L.mono, lineHeight:1 }}>{s.v ?? "—"}</div>
+                  {s.v!=null && <div style={{ height:4, background:u.fill, borderRadius:99, overflow:"hidden", marginTop:4 }}><div style={{ height:"100%", width:`${(s.v/20)*100}%`, background:s.c, borderRadius:99 }} /></div>}
+                  {s.better && <div style={{ fontSize:L.fsXs, color:u.green, marginTop:3 }}>✓</div>}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </Card>
     </div>
   );
 }
@@ -4184,11 +4190,14 @@ function generateInsights(stats, user, nasa, dkC, ltC) {
 
   // ── Workload insight ─────────────────────────────────────────────────────────
   let workloadInsight = "";
-  if (nasa?.totalScore != null) {
-    const score = nasa.totalScore;
-    if (score < 7) workloadInsight = `Your overall workload score of ${score.toFixed(1)} out of 20 indicates a low cognitive load experience. You found the tasks manageable and did not experience significant mental fatigue — a very positive result that suggests the tasks were well-matched to your current skill level.`;
-    else if (score < 13) workloadInsight = `Your workload score of ${score.toFixed(1)} out of 20 reflects a moderate level of cognitive effort. This is the expected range for unfamiliar tasks — it shows genuine engagement without overwhelming strain. As you become more familiar with similar interfaces, this figure tends to decrease.`;
-    else workloadInsight = `Your workload score of ${score.toFixed(1)} out of 20 suggests the tasks were cognitively demanding. This is common when encountering new interface types for the first time. The good news is that with repeated exposure, perceived workload drops substantially as tasks become more automatic.`;
+  const nasaDkScore = exps.find(e => e.theme === "dark"  && e.nasaTLX)?.nasaTLX?.totalScore;
+  const nasaLtScore = exps.find(e => e.theme === "light" && e.nasaTLX)?.nasaTLX?.totalScore;
+  if (nasaDkScore != null || nasaLtScore != null) {
+    const lower = nasaDkScore != null && nasaLtScore != null ? (nasaDkScore < nasaLtScore ? "dark" : "light") : null;
+    const ref = lower === "dark" ? nasaDkScore : lower === "light" ? nasaLtScore : (nasaDkScore ?? nasaLtScore);
+    if (ref < 7) workloadInsight = `Your workload scores were low (🌙 ${nasaDkScore?.toFixed(1) ?? "—"} · ☀️ ${nasaLtScore?.toFixed(1) ?? "—"} out of 20), indicating the tasks felt manageable and comfortable across both conditions — a very positive outcome.`;
+    else if (ref < 13) workloadInsight = `Your workload scores reflect moderate cognitive effort (🌙 ${nasaDkScore?.toFixed(1) ?? "—"} · ☀️ ${nasaLtScore?.toFixed(1) ?? "—"} out of 20). This is expected when engaging with unfamiliar tasks.${lower ? ` Notably, ${lower} mode produced lower workload.` : ""}`;
+    else workloadInsight = `Your workload scores suggest the tasks were cognitively demanding (🌙 ${nasaDkScore?.toFixed(1) ?? "—"} · ☀️ ${nasaLtScore?.toFixed(1) ?? "—"} out of 20). With repeated exposure to similar interfaces, perceived workload typically decreases substantially.`;
   }
 
   // ── Recommendation ───────────────────────────────────────────────────────────
@@ -4209,7 +4218,9 @@ function generateInsights(stats, user, nasa, dkC, ltC) {
 function ReportScreen({ user, u, onBack }) {
   const stats  = useMemo(() => computeStats(user), [user]);
   const exps   = user.experiments || [];
-  const nasa   = exps.find(e => e.nasaTLX)?.nasaTLX;
+  const nasaDkObj = exps.find(e => e.theme === "dark"  && e.nasaTLX)?.nasaTLX;
+  const nasaLtObj = exps.find(e => e.theme === "light" && e.nasaTLX)?.nasaTLX;
+  const nasa   = nasaDkObj || nasaLtObj; // for backwards compat
   const dkC    = exps.find(e => e.theme === "dark")?.comfort;
   const ltC    = exps.find(e => e.theme === "light")?.comfort;
   const dem    = user.dem || {};
@@ -4425,27 +4436,34 @@ function ReportScreen({ user, u, onBack }) {
           {nasa && <>
             <SectionTitle color="#DC2626">Cognitive Workload (NASA-TLX)</SectionTitle>
             <InsightBox text={insights.workloadInsight} color="#DC2626" />
-            <div style={{ padding:"16px 20px", borderRadius:10, background:"#FEF2F2", border:"1px solid #FECACA", marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <div>
-                <div style={{ fontSize:12, color:"#9CA3AF", marginBottom:4 }}>Overall Workload Score</div>
-                <div style={{ fontSize:28, fontWeight:900, color: nasa.totalScore<7?"#15803D":nasa.totalScore<13?"#B45309":"#DC2626" }}>{nasa.totalScore?.toFixed(1)} <span style={{ fontSize:14, fontWeight:400, color:"#9CA3AF" }}>/ 20</span></div>
-              </div>
-              <div style={{ fontSize:13, color:"#6B7280", textAlign:"right" }}>
-                <div>Low: &lt;7 · Moderate: 7–13</div>
-                <div>High: &gt;13</div>
-              </div>
+            {/* Dark vs Light total scores */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+              {[{ label:"🌙 Dark Mode", obj:nasaDkObj, col:"#1D4ED8" }, { label:"☀️ Light Mode", obj:nasaLtObj, col:"#D97706" }].map(({ label, obj, col }) => (
+                <div key={label} style={{ padding:"14px 16px", borderRadius:10, background:"#F8FAFC", border:`2px solid ${col}30`, textAlign:"center" }}>
+                  <div style={{ fontSize:11, color:"#6B7280", marginBottom:6 }}>{label}</div>
+                  {obj ? (
+                    <>
+                      <div style={{ fontSize:26, fontWeight:900, color: obj.totalScore<7?"#15803D":obj.totalScore<13?"#B45309":"#DC2626" }}>{obj.totalScore?.toFixed(1)}<span style={{ fontSize:12, fontWeight:400, color:"#9CA3AF" }}>/20</span></div>
+                      <div style={{ fontSize:11, color:"#6B7280", marginTop:3 }}>{obj.totalScore<7?"Low":obj.totalScore<13?"Moderate":"High"} workload</div>
+                    </>
+                  ) : <div style={{ color:"#9CA3AF", fontSize:12 }}>Not collected</div>}
+                </div>
+              ))}
             </div>
+            {/* Per-dimension comparison */}
             <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
               {NASA_DIMS.map(({ k, l }) => {
-                const v = nasa[k]; if (!v) return null;
-                const col = v/20<0.35?"#15803D":v/20<0.65?"#B45309":"#DC2626";
+                const dv = nasaDkObj?.[k], lv = nasaLtObj?.[k];
+                const hasBoth = dv != null && lv != null;
                 return (
                   <div key={k} style={{ padding:"10px 14px", borderRadius:8, background:"#FAFAFA", border:"1px solid #E2E8F0" }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", fontSize:12, marginBottom:6 }}>
-                      <span style={{ color:"#6B7280" }}>{l}</span>
-                      <span style={{ fontWeight:700, color:col }}>{v}/20</span>
+                    <div style={{ fontSize:11, color:"#6B7280", marginBottom:6, fontWeight:600 }}>{l}</div>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                      <span style={{ fontSize:12, fontWeight:700, color:"#1D4ED8" }}>🌙 {dv ?? "—"}</span>
+                      <span style={{ fontSize:12, fontWeight:700, color:"#D97706" }}>☀️ {lv ?? "—"}</span>
                     </div>
-                    <Bar value={v} max={20} color={col} height={5} />
+                    {dv != null && <Bar value={dv} max={20} color="#1D4ED8" height={4} />}
+                    {lv != null && <div style={{ marginTop:3 }}><Bar value={lv} max={20} color="#D97706" height={4} /></div>}
                   </div>
                 );
               })}
