@@ -801,22 +801,18 @@ function generateTestData() {
 const CFG = {
   adminEmail: "admin@study.com", adminPw: "hci2024",
   idleMs: 2000, memMs: 4000,
-  tasks: ["visual_search","flanker","comparison","reading_comp","email_sel","form_fill","memory_recall","nav_task"],
-  TL: { visual_search:"Visual Search", flanker:"Flanker Inhibition", n_back:"2-Back Memory", stroop:"Stroop Interference", comparison:"Data Comparison", selection:"Item Selection", memory_recall:"Memory Recall", arithmetic:"Mental Arithmetic", pattern:"Pattern Completion", trail:"Trail Sequence", email_sel:"Email Selection", data_comp:"Data Comparison", form_fill:"Form Filling", coded_recall:"Coded Recall", nav_task:"Navigation", reading_comp:"Reading Comprehension" },
+  tasks: ["visual_search","flanker","symbol_match","sentence_verify","trail_making","digit_span","n_back","nav_task"],
+  TL: { visual_search:"Visual Search", flanker:"Flanker Inhibition", symbol_match:"Symbol Matching", sentence_verify:"Sentence Verification", trail_making:"Trail Making", digit_span:"Digit Span", n_back:"N-Back Memory", nav_task:"Navigation" },
   TD: { visual_search:"Find and click every occurrence of the target character in the 6×6 grid.", flanker:"Identify the direction the CENTRE arrow points — ignore the flankers.", n_back:"Does the current letter match the one from 2 steps ago? Click Match or No Match.", stroop:"Click the colour of the INK, not what the word says.", comparison:"Select every row where Column A exceeds Column B by more than the threshold.", selection:"Select all items belonging to the stated category.", memory_recall:"Memorise the displayed words, then identify them in the recognition list.", arithmetic:"Solve the problem and tap the correct answer as fast as you can.", pattern:"Identify the value that logically completes the sequence.", trail:"Click the numbered circles in ascending order: 1 → 2 → 3 …", email_sel:"Select all emails matching the stated criteria from the inbox list below.", data_comp:"Compare the two information cards and select the one that answers the question.", form_fill:"A reference card is shown above. Transcribe the four requested fields into the form below as accurately as possible.", coded_recall:"A code is displayed briefly — memorise it. Then answer the question from memory.", nav_task:"Navigate the menu to find and click the specified destination.", reading_comp:"Read the passage carefully, then answer the comprehension question." },
   TN: {
-    // ── Active tasks — minimum trials for reliable measurement ──────────
-    visual_search: 3,   // 3 grids — sufficient for attention/accuracy
-    flanker:       6,   // 6 trials — 3 congruent + 3 incongruent (minimum for flanker effect)
-    comparison:    3,   // 3 tables
-    reading_comp:  2,   // 2 passages — each is already substantial
-    email_sel:     2,   // 2 inbox lists
-    form_fill:     1,   // 1 form — typing is intensive; 1 is enough
-    memory_recall: 2,   // 2 rounds
-    nav_task:      2,   // 2 menu trees
-    // ── Inactive (kept for compatibility) ─────────────────────────────
-    n_back:10, stroop:6, selection:3, arithmetic:5, pattern:4,
-    trail:3, data_comp:3, coded_recall:2,
+    visual_search:   3,   // 3 grids — attention and target detection
+    flanker:         6,   // 6 trials — 3 congruent + 3 incongruent
+    symbol_match:    4,   // 4 trials — pattern recognition
+    sentence_verify: 4,   // 4 sentences — reading and semantic reasoning
+    trail_making:    2,   // 2 sequences — planning and sequencing
+    digit_span:      3,   // 3 rounds — working memory
+    n_back:          6,   // 6 items per trial — memory updating
+    nav_task:        2,   // 2 menu trees — navigation
   },
   RT: ["flanker","reading_comp"],
 };
@@ -858,181 +854,57 @@ const gen = {
     const a = dir === "L" ? "←" : "→", f = cong ? a : (dir === "L" ? "→" : "←");
     return { display: [f, f, a, f, f], dir, cong };
   },
+  // ── New validated tasks ─────────────────────────────────────────────────────────
+  // ── New validated tasks ─────────────────────────────────────────────────────────
+  symbol_match() {
+    const pool = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789#@$%&".split("");
+    const target = pool[Math.floor(Math.random() * pool.length)];
+    const distractors = shuf(pool.filter(s => s !== target)).slice(0, 8);
+    return { target, items: shuf([target, ...distractors]) };
+  },
+  sentence_verify() {
+    const sentences = [
+      { s:"The sky is blue",                a:true  }, { s:"Fish live in water",              a:true  },
+      { s:"The sun rises in the west",      a:false }, { s:"Cats have four legs",             a:true  },
+      { s:"Humans breathe underwater",      a:false }, { s:"Ice is cold",                     a:true  },
+      { s:"Birds cannot fly",               a:false }, { s:"The moon is smaller than Earth",  a:true  },
+      { s:"Snakes have legs",               a:false }, { s:"Water freezes at 0°C",            a:true  },
+      { s:"The heart pumps blood",          a:true  }, { s:"Apples are a vegetable",          a:false },
+      { s:"The Earth orbits the Sun",       a:true  }, { s:"Diamonds are made of gold",       a:false },
+      { s:"Honey is made by bees",          a:true  }, { s:"The ocean contains fresh water",  a:false },
+      { s:"Dogs are mammals",               a:true  }, { s:"Plants need sunlight to grow",    a:true  },
+      { s:"Sound travels faster than light",a:false }, { s:"The number 7 is even",            a:false },
+      { s:"A triangle has four sides",      a:false }, { s:"The heart is in the chest",       a:true  },
+      { s:"Trees are living organisms",     a:true  }, { s:"The sun is a planet",             a:false },
+    ];
+    return sentences[Math.floor(Math.random() * sentences.length)];
+  },
+  trail_making() {
+    const n = 5;
+    const grid = [], positions = [];
+    while (positions.length < n) {
+      const x = Math.floor(Math.random() * 5), y = Math.floor(Math.random() * 4);
+      if (!positions.find(p => p.x===x && p.y===y)) positions.push({ x, y });
+    }
+    const nums = shuf([1,2,3,4,5]);
+    return { nodes: positions.map((p, i) => ({ ...p, n: nums[i] })), total: n };
+  },
+  digit_span() {
+    const len = 4 + Math.floor(Math.random() * 2); // 4 or 5 digits
+    return { digits: Array.from({ length:len }, () => Math.floor(Math.random() * 10)) };
+  },
   n_back() {
     const AL = "BCDFGHJKLMNPQRSTVWXZ".split("");
-    const n = CFG.TN.n_back;
-    const s = Array.from({ length: n }, () => AL[Math.floor(Math.random() * AL.length)]);
-    for (let i = 2; i < n; i++) if (Math.random() < .35) s[i] = s[i - 2];
-    return { seq: s, n };
-  },
-  stroop() {
-    const C = [{ name:"RED", css:"#f87171" }, { name:"BLUE", css:"#60a5fa" }, { name:"GREEN", css:"#34d399" }, { name:"YELLOW", css:"#fbbf24" }];
-    const word = C[Math.floor(Math.random() * C.length)];
-    const cong = Math.random() > .5;
-    const ink = cong ? word : C.filter(c => c.name !== word.name)[Math.floor(Math.random() * 3)];
-    return { word: word.name, ink, cong, opts: shuf([...C]) };
-  },
-  comparison() {
-    const thr = [10, 15, 20, 25][Math.floor(Math.random() * 4)], n = 8, nc = Math.floor(Math.random() * 2) + 2;
-    const ok = new Set();
-    while (ok.size < nc) ok.add(Math.floor(Math.random() * n));
-    const rows = Array.from({ length: n }, (_, i) => {
-      const a = Math.floor(Math.random() * 80) + 40;
-      let b;
-      if (ok.has(i)) { b = a - thr - Math.floor(Math.random() * 20) - 1; if (b < 1) b = 1; }
-      else { b = a - Math.floor(Math.random() * thr); if (b < 1) b = 1; if (a - b > thr) b = a - thr + 1; }
-      return { id: i, a, b, ok: ok.has(i), sel: false };
-    });
-    return { rows, thr, okRows: [...ok] };
-  },
-  selection() {
-    const CATS = ["Electronics","Books","Clothing","Food","Sports","Home","Toys","Health"];
-    const tc = CATS[Math.floor(Math.random() * CATS.length)], nc = Math.floor(Math.random() * 3) + 3;
-    const items = Array.from({ length: 12 }, (_, i) => ({ id: i, name: `Product ${String.fromCharCode(65 + i)}`, cat: CATS[Math.floor(Math.random() * CATS.length)], price: Math.floor(Math.random() * 180) + 20, sel: false }));
-    let c = 0;
-    for (const i of shuf([...Array(12).keys()])) { if (c >= nc) break; items[i].cat = tc; c++; }
-    return { items: shuf(items).map((x, i) => ({ ...x, id: i })), tc, crit: `Category = "${tc}"` };
-  },
-  memory_recall() {
-    const pool = shuf(["castle","rocket","mirror","ocean","lantern","forest","kettle","dragon","harbor","island","bridge","engine","garden","pillow","sunset","temple","valley","window","candle","anchor","ribbon","silver","copper","marble","bottle","puzzle","hammer","circle","shadow","thunder"]);
-    const tgts = pool.slice(0, 6), dst = pool.slice(6, 12);
-    return { tgts, items: shuf([...tgts, ...dst]).map((w, i) => ({ id: i, w, ok: tgts.includes(w), sel: false })) };
-  },
-  arithmetic() {
-    const ops = [{ o:"+", ga:()=>Math.floor(Math.random()*50)+10, gb:()=>Math.floor(Math.random()*50)+10 }, { o:"−", ga:()=>Math.floor(Math.random()*50)+30, gb:()=>Math.floor(Math.random()*30)+5 }, { o:"×", ga:()=>Math.floor(Math.random()*12)+2, gb:()=>Math.floor(Math.random()*12)+2 }];
-    const { o, ga, gb } = ops[Math.floor(Math.random() * ops.length)];
-    const a = ga(), b = gb(), ans = o === "+" ? a + b : o === "−" ? a - b : a * b;
-    const w = new Set();
-    while (w.size < 3) { const v = ans + [-3,-2,-1,1,2,3,4,5][Math.floor(Math.random() * 8)]; if (v !== ans) w.add(v); }
-    return { prob: `${a} ${o} ${b} = ?`, ans, opts: shuf([ans, ...w]).map((v, i) => ({ id: i, v, ok: v === ans })) };
-  },
-  pattern() {
-    const type = ["arith","geo","letter"][Math.floor(Math.random() * 3)];
-    if (type === "arith") {
-      const s = Math.floor(Math.random() * 10) + 1, d = [2,3,4,5][Math.floor(Math.random() * 4)];
-      const seq = Array.from({ length: 4 }, (_, i) => s + i * d), ans = s + 4 * d;
-      const w = new Set();
-      while (w.size < 3) { const v = ans + [-d,d,1,-1,d*2][Math.floor(Math.random()*5)]; if (v !== ans && v > 0) w.add(v); }
-      return { seq: seq.map(String), ans: String(ans), opts: shuf([ans,...w]).map((v,i) => ({ id:i, v:String(v), ok:String(v)===String(ans) })) };
+    const seq = [AL[Math.floor(Math.random() * AL.length)]];
+    const targets = [false];
+    for (let i = 1; i < CFG.TN.n_back; i++) {
+      const isTarget = i >= 1 && Math.random() < 0.35;
+      if (isTarget) { seq.push(seq[i-1]); targets.push(true); }
+      else { let l; do { l = AL[Math.floor(Math.random()*AL.length)]; } while (l===seq[i-1]); seq.push(l); targets.push(false); }
     }
-    if (type === "geo") {
-      const s = Math.floor(Math.random() * 3) + 2, r = [2,3][Math.floor(Math.random()*2)];
-      const seq = Array.from({ length: 4 }, (_, i) => s * Math.pow(r, i)), ans = s * Math.pow(r, 4);
-      const w = new Set();
-      while (w.size < 3) { const v = [ans-seq[3],ans+seq[3],ans*r,ans/r][Math.floor(Math.random()*4)]; if (v !== ans && v > 0) w.add(Math.round(v)); }
-      return { seq: seq.map(String), ans: String(ans), opts: shuf([ans,...w]).map((v,i) => ({ id:i, v:String(Math.round(v)), ok:Math.round(v)===ans })) };
-    }
-    const s = Math.floor(Math.random() * 20);
-    const seq = Array.from({ length: 4 }, (_, i) => String.fromCharCode(65 + s + i));
-    const ans = String.fromCharCode(65 + s + 4);
-    const w = new Set();
-    while (w.size < 3) { const c = String.fromCharCode(65 + Math.floor(Math.random() * 26)); if (c !== ans) w.add(c); }
-    return { seq, ans, opts: shuf([ans,...w]).map((v,i) => ({ id:i, v, ok:v===ans })) };
-  },
-  trail() {
-    const n = 8, pos = [];
-    while (pos.length < n) {
-      const p = { x: Math.floor(Math.random() * 72) + 10, y: Math.floor(Math.random() * 68) + 14 };
-      if (pos.every(q => Math.hypot(p.x - q.x, p.y - q.y) > 16)) pos.push(p);
-    }
-    return { nodes: pos.map((p, i) => ({ ...p, id: i + 1, done: false })), n };
+    return { seq, targets };
   },
 
-  email_sel() {
-    const INBOX = [
-      { from:"Sarah Chen",      subject:"Q3 Report Review — action needed",  tag:"urgent", time:"9:14 AM" },
-      { from:"Mike Torres",     subject:"Team lunch Friday — who's in?",      tag:"normal", time:"8:52 AM" },
-      { from:"System Monitor",  subject:"Disk usage at 91% — please review",  tag:"urgent", time:"8:30 AM" },
-      { from:"Lena Park",       subject:"Re: Updated project timeline",        tag:"normal", time:"8:11 AM" },
-      { from:"David Kim",       subject:"URGENT: Budget approval by EOD",      tag:"urgent", time:"7:58 AM" },
-      { from:"Promo Newsletter",subject:"Your weekly digest is ready",         tag:"spam",   time:"7:30 AM" },
-      { from:"Aisha Patel",     subject:"Onboarding docs — please sign",       tag:"normal", time:"7:15 AM" },
-      { from:"Tom Walsh",       subject:"Server maintenance window tonight",    tag:"urgent", time:"6:50 AM" },
-      { from:"HR Team",         subject:"Holiday schedule update",             tag:"normal", time:"6:40 AM" },
-    ];
-    const emails = shuf(INBOX).slice(0, 7).map((e, id) => ({ ...e, id, sel: false }));
-    const correctIds = emails.filter(e => e.tag === "urgent").map(e => e.id);
-    return { emails, crit: "Select all emails tagged Urgent", correctIds };
-  },
-
-  data_comp() {
-    const METRICS = [
-      { metric:"Total Revenue",        fmt: v => `$${v.toFixed(1)}M`,          gen: () => +(Math.random()*8+1).toFixed(1) },
-      { metric:"Units Sold",           fmt: v => v.toLocaleString(),            gen: () => Math.floor(Math.random()*5000)+500 },
-      { metric:"Customer Rating",      fmt: v => `${v.toFixed(1)} / 5.0`,      gen: () => +(Math.random()*2+3).toFixed(1) },
-      { metric:"Monthly Active Users", fmt: v => `${v.toLocaleString()}`,       gen: () => Math.floor(Math.random()*50000)+5000 },
-      { metric:"Support Tickets",      fmt: v => `${v}`,                        gen: () => Math.floor(Math.random()*400)+50 },
-      { metric:"Growth Rate",          fmt: v => `+${v}%`,                      gen: () => Math.floor(Math.random()*25)+2 },
-    ];
-    const COMPANIES = ["Alpha Corp","Beta Ltd","Gamma Inc","Delta Co","Epsilon AG","Zeta Group","Apex Solutions","Nova Systems"];
-    const m = METRICS[Math.floor(Math.random() * METRICS.length)];
-    const [c1, c2] = shuf(COMPANIES).slice(0, 2);
-    let av = m.gen(), bv = m.gen();
-    while (String(av) === String(bv)) bv = m.gen();
-    return { question: `Which company has the higher ${m.metric}?`, a: { company:c1, metric:m.metric, display:m.fmt(av), raw:av }, b: { company:c2, metric:m.metric, display:m.fmt(bv), raw:bv }, correct: av > bv ? "a" : "b" };
-  },
-
-  form_fill() {
-    const NAMES  = ["James Carter","Aisha Okonkwo","Priya Sharma","Tom Walsh","Mei Lin","Carlos Rivera","Emma Johansson","Kai Nakamura"];
-    const DEPTS  = ["Engineering","Marketing","Finance","Operations","Design","Legal","Research","Sales"];
-    const src = {
-      name:  NAMES[Math.floor(Math.random()*NAMES.length)],
-      empId: `EMP-${Math.floor(Math.random()*9000)+1000}`,
-      dept:  DEPTS[Math.floor(Math.random()*DEPTS.length)],
-      code:  `${String.fromCharCode(65+Math.floor(Math.random()*26))}${Math.floor(Math.random()*90)+10}-${String.fromCharCode(65+Math.floor(Math.random()*26))}`,
-      date:  `${String(Math.floor(Math.random()*28)+1).padStart(2,"0")}/${String(Math.floor(Math.random()*12)+1).padStart(2,"0")}/2024`,
-    };
-    const fields = [{ k:"empId",l:"Employee ID" },{ k:"dept",l:"Department" },{ k:"code",l:"Access Code" },{ k:"date",l:"Date" }];
-    return { src, fields };
-  },
-
-  coded_recall() {
-    const COLORS = ["Red","Blue","Green","Yellow","Purple","Orange","Silver","Bronze"];
-    const color = COLORS[Math.floor(Math.random()*COLORS.length)];
-    const code  = String.fromCharCode(65+Math.floor(Math.random()*26)) + Math.floor(Math.random()*90+10);
-    const num   = Math.floor(Math.random()*9000)+1000;
-    const display = `${code}  —  ${color}  —  ${num}`;
-    const qType = ["code","color","number"][Math.floor(Math.random()*3)];
-    let question, correct, wrongs;
-    if (qType === "code") {
-      question = "What was the code?";  correct = code;
-      wrongs = Array.from({length:5},()=>String.fromCharCode(65+Math.floor(Math.random()*26))+Math.floor(Math.random()*90+10)).filter(v=>v!==correct);
-    } else if (qType === "color") {
-      question = "What colour was shown?";  correct = color;
-      wrongs = shuf(COLORS.filter(c=>c!==color));
-    } else {
-      question = "What was the number?";  correct = String(num);
-      wrongs = Array.from({length:5},()=>String(Math.floor(Math.random()*9000)+1000)).filter(v=>v!==correct);
-    }
-    return { display, question, correct, opts: shuf([correct,...wrongs.slice(0,3)]).map((v,i)=>({id:i,v,ok:v===correct})), showMs:4000 };
-  },
-
-  nav_task() {
-    const TREE = {
-      "Settings":  ["Profile","Notifications","Privacy","Security","Appearance","Language & Region"],
-      "Dashboard": ["Overview","Analytics","Reports","Goals","Activity Log"],
-      "Account":   ["Billing","Subscription","Team Members","API Keys","Usage Stats"],
-      "Help":      ["FAQ","Documentation","Contact Support","Community","System Status"],
-      "Tools":     ["Import Data","Export Data","Integrations","Scheduler","Backup & Restore"],
-    };
-    const roots = Object.keys(TREE);
-    const root   = roots[Math.floor(Math.random()*roots.length)];
-    const target = TREE[root][Math.floor(Math.random()*TREE[root].length)];
-    return { tree:TREE, roots, target:{ root, item:target }, path:`${root} → ${target}` };
-  },
-
-  reading_comp() {
-    const POOL = [
-      { text:"The company reported a 23% increase in quarterly revenue, driven primarily by its cloud services division. Operating costs fell by 8% due to automation, resulting in the highest profit margin recorded in five years.", q:"What drove the revenue increase?", opts:["Cost reduction","Cloud services","A new acquisition","Store expansion"], ans:"Cloud services" },
-      { text:"Researchers found that participants who took five-minute breaks every hour showed 18% higher task accuracy compared to those who worked continuously. Fatigue markers were significantly lower in the break group.", q:"How much higher was accuracy in the break group?", opts:["8%","12%","18%","25%"], ans:"18%" },
-      { text:"The new interface reduced average support ticket volume by 34% in the first month. User satisfaction scores rose from 3.2 to 4.6 out of 5, and average session duration increased by 11 minutes.", q:"By how much did support tickets drop?", opts:["11%","23%","34%","46%"], ans:"34%" },
-      { text:"A study of 1,200 remote workers found that those with dedicated office spaces reported 40% fewer distractions. Productivity scores were 22% higher and meeting attendance improved by 15% compared to shared-space workers.", q:"How many workers were studied?", opts:["800","1,000","1,200","1,500"], ans:"1,200" },
-      { text:"The renewable energy project generated 4.7 gigawatts in its first year, exceeding the projected 4.2 gigawatt target by 12%. The surplus power was distributed to three neighbouring regions to offset grid demand.", q:"By how much did the project exceed its target?", opts:["8%","10%","12%","15%"], ans:"12%" },
-      { text:"Customer churn dropped from 6.8% to 3.1% after the loyalty programme launched. The $2.4M programme generated $9.1M in retained revenue within six months, yielding a net return of 279%.", q:"What was the churn rate before the programme?", opts:["3.1%","4.5%","6.8%","8.2%"], ans:"6.8%" },
-    ];
-    const p = shuf(POOL)[0];
-    return { text:p.text, question:p.q, opts:shuf(p.opts).map((v,i)=>({id:i,v,ok:v===p.ans})), ans:p.ans };
-  },
 };
 
 // ─── TRACKER HOOK ─────────────────────────────────────────────────────────────────
@@ -1282,15 +1154,14 @@ function computeStats(user) {
   })();
   const speed = clamp(1 - avg([...dkRTs,...ltRTs].filter(Boolean).map(r => r / 2000)), 0, 1);
   const cog = {
-    speed: speed || 0,
-    accuracy: avg(all.map(t => t.acc || 0)),
-    // bt() safely returns an empty array for any task not in the active set
-    memory:     avg([...(byTask.memory_recall||[]),...(byTask.n_back||[])].map(t => t.acc || 0)) || 0,
-    inhibition: avg([...(byTask.flanker||[]),...(byTask.stroop||[])].map(t => t.acc || 0)) || 0,
-    pattern:    avg([...(byTask.pattern||[]),...(byTask.comparison||[])].map(t => t.acc || 0)) || 0,
-    arithmetic: avg((byTask.arithmetic||[]).map(t => t.acc || 0)) || 0,
-    attention:  avg([...(byTask.visual_search||[]),...(byTask.trail||[])].map(t => t.acc || 0)) || 0,
-    processing: clamp(1 - avg([...(byTask.stroop||[]),...(byTask.flanker||[])].filter(t => t.rt).map(t => t.rt / 1500)), 0, 1) || 0,
+    attention:   avg((byTask.visual_search   ||[]).map(t=>t.acc||0)) || 0,
+    inhibition:  avg((byTask.flanker         ||[]).map(t=>t.acc||0)) || 0,
+    analysis:    avg((byTask.symbol_match    ||[]).map(t=>t.acc||0)) || 0,
+    reading:     avg((byTask.sentence_verify ||[]).map(t=>t.acc||0)) || 0,
+    decision:    avg((byTask.trail_making    ||[]).map(t=>t.acc||0)) || 0,
+    precision:   avg((byTask.digit_span      ||[]).map(t=>t.acc||0)) || 0,
+    memory:      avg((byTask.n_back          ||[]).map(t=>t.acc||0)) || 0,
+    navigation:  avg((byTask.nav_task        ||[]).map(t=>t.acc||0)) || 0,
   };
   return { all, dk, lt, dkRTs, ltRTs, byTask, tperf, accDk, accLt, efDk, efLt, rtDk, rtLt, betterTheme, cog, comfortDk, comfortLt, nasaTotalDk, nasaTotalLt, nasaDk, nasaLt, errDk, errLt, n: exps.length };
 }
@@ -2161,6 +2032,253 @@ function CodedRecallTask({ t, data, idx, total, onDone, tracker }) {
 }
 
 // ─── NAVIGATION TASK ──────────────────────────────────────────────────────────────
+// ─── SYMBOL MATCH TASK ───────────────────────────────────────────────────────────
+function SymbolMatchTask({ t, data, idx, total, onDone, tracker }) {
+  const [sel, setSel] = useState(null);
+  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+
+  const pick = item => {
+    if (sel !== null) return;
+    const ok = item === data.target;
+    setSel(item);
+    tracker.click(ok);
+    const m = tracker.stop();
+    setTimeout(() => onDone({ acc:ok?1:0, rt:m.rt, err:ok?0:1, ...m }), 500);
+  };
+
+  return (
+    <div style={{ textAlign:"center", padding:"0 8px" }}>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:12 }}>Trial {idx+1} of {total} — Tap the matching symbol</div>
+      <div style={{ fontSize:"clamp(52px,15vw,72px)", fontFamily:L.mono, fontWeight:700, color:t.text, marginBottom:20, letterSpacing:4 }}>{data.target}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"clamp(6px,2vw,10px)", maxWidth:280, margin:"0 auto" }}>
+        {data.items.map(item => {
+          const isTarget = item === data.target;
+          const picked = sel === item;
+          let bg=t.surface, color=t.text, border=t.border;
+          if (picked) { bg=isTarget?t.successBg:t.errorBg; color=isTarget?t.success:t.error; border=isTarget?t.success:t.error; }
+          return (
+            <button key={item} onClick={() => pick(item)}
+              style={{ height:"clamp(52px,14vw,64px)", borderRadius:R.md, border:`1.5px solid ${border}`, background:bg, color, fontSize:"clamp(18px,5vw,26px)", fontFamily:L.mono, fontWeight:700, cursor:sel!==null?"default":"pointer", transition:"all .1s" }}>
+              {item}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── SENTENCE VERIFY TASK ────────────────────────────────────────────────────────
+function SentenceVerifyTask({ t, data, idx, total, onDone, tracker }) {
+  const [done, setDone] = useState(false);
+  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+
+  const respond = ans => {
+    if (done) return;
+    setDone(true);
+    const ok = ans === data.a;
+    tracker.click(ok);
+    const m = tracker.stop();
+    onDone({ acc:ok?1:0, rt:m.rt, err:ok?0:1, ...m });
+  };
+
+  return (
+    <div style={{ textAlign:"center", maxWidth:420, margin:"0 auto", padding:"0 12px" }}>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:20 }}>Trial {idx+1} of {total} — Is this statement true or false?</div>
+      <div style={{ fontSize:"clamp(18px,4.5vw,24px)", fontWeight:700, color:t.text, marginBottom:36, lineHeight:1.5, padding:"20px 24px", background:t.surface, borderRadius:R.lg, border:`1px solid ${t.border}` }}>
+        {data.s}
+      </div>
+      <div style={{ display:"flex", gap:16, justifyContent:"center" }}>
+        {[{ ans:true, l:"✓ True", bg:t.success }, { ans:false, l:"✗ False", bg:t.error }].map(({ ans, l, bg }) => (
+          <button key={String(ans)} onClick={() => respond(ans)} disabled={done}
+            style={{ flex:1, maxWidth:160, height:"clamp(48px,12vw,60px)", borderRadius:R.md, border:"none", background:bg, color:"#fff", fontSize:"clamp(15px,4vw,19px)", fontWeight:700, fontFamily:L.font, cursor:done?"default":"pointer", opacity:done?.7:1 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── TRAIL MAKING TASK ───────────────────────────────────────────────────────────
+function TrailMakingTask({ t, data, idx, total, onDone, tracker }) {
+  const [next, setNext] = useState(1);
+  const [tapped, setTapped] = useState([]);
+  const [hadErr, setHadErr] = useState(false);
+  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+
+  const tap = n => {
+    if (tapped.includes(n)) return;
+    if (n === next) {
+      tracker.click(true);
+      const newTapped = [...tapped, n];
+      setTapped(newTapped);
+      if (next === data.total) {
+        const m = tracker.stop();
+        onDone({ acc:hadErr?0.7:1, rt:m.rt, err:hadErr?1:0, ...m });
+      } else { setNext(next + 1); }
+    } else {
+      tracker.click(false);
+      setHadErr(true);
+    }
+  };
+
+  // 5×4 grid layout
+  const COLS = 5, ROWS = 4;
+  const cells = Array.from({ length: COLS*ROWS }, (_,i) => {
+    const node = data.nodes.find(nd => nd.x === i%COLS && nd.y === Math.floor(i/COLS));
+    return { idx:i, node };
+  });
+
+  return (
+    <div style={{ textAlign:"center", padding:"0 8px" }}>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Trial {idx+1} of {total} — Tap numbers 1 → {data.total} in order</div>
+      <div style={{ fontSize:13, fontWeight:700, color:t.accent, marginBottom:16 }}>Next: {next}</div>
+      <div style={{ display:"grid", gridTemplateColumns:`repeat(${COLS},1fr)`, gap:"clamp(4px,1.5vw,8px)", maxWidth:320, margin:"0 auto" }}>
+        {cells.map(({ idx:ci, node }) => {
+          if (!node) return <div key={ci} />;
+          const done2 = tapped.includes(node.n);
+          const isNext = node.n === next;
+          return (
+            <button key={ci} onClick={() => tap(node.n)}
+              style={{ height:"clamp(50px,13vw,62px)", borderRadius:"50%", border:`2px solid ${done2?t.success:isNext?t.accent:t.border}`, background:done2?t.successBg:isNext?`${t.accent}18`:t.surface, color:done2?t.success:isNext?t.accent:t.text, fontSize:"clamp(16px,4.5vw,22px)", fontWeight:800, fontFamily:L.mono, cursor:done2||tapped.length>=data.total?"default":"pointer", transition:"all .15s" }}>
+              {node.n}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── DIGIT SPAN TASK ─────────────────────────────────────────────────────────────
+function DigitSpanTask({ t, data, idx, total, onDone, tracker }) {
+  const [phase, setPhase] = useState("show"); // "show" | "recall"
+  const [shown, setShown] = useState(0);
+  const [input, setInput] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [result, setResult] = useState(null);
+
+  useEffect(() => { tracker.start(); }, []);
+
+  useEffect(() => {
+    if (phase !== "show") return;
+    if (shown < data.digits.length) {
+      const t2 = setTimeout(() => setShown(s => s + 1), 700);
+      return () => clearTimeout(t2);
+    } else {
+      const t2 = setTimeout(() => { setPhase("recall"); tracker.setOnset(Date.now()); }, 500);
+      return () => clearTimeout(t2);
+    }
+  }, [phase, shown]);
+
+  const submit = () => {
+    if (submitted) return;
+    setSubmitted(true);
+    const ok = input === data.digits.join("");
+    setResult(ok);
+    tracker.click(ok);
+    const m = tracker.stop();
+    setTimeout(() => onDone({ acc:ok?1:0, rt:m.rt, err:ok?0:1, ...m }), 700);
+  };
+
+  return (
+    <div style={{ textAlign:"center", padding:"0 12px" }}>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:16 }}>Trial {idx+1} of {total}</div>
+      {phase === "show" ? (
+        <>
+          <div style={{ fontSize:13, color:t.muted, marginBottom:24 }}>Remember this sequence</div>
+          <div style={{ display:"flex", gap:12, justifyContent:"center", alignItems:"center", minHeight:80 }}>
+            {data.digits.slice(0, shown).map((d, i) => (
+              <div key={i} style={{ width:"clamp(44px,12vw,56px)", height:"clamp(44px,12vw,56px)", borderRadius:R.md, background:t.surface, border:`1px solid ${t.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"clamp(22px,6vw,30px)", fontWeight:800, fontFamily:L.mono, color:t.text }}>{d}</div>
+            ))}
+          </div>
+          <div style={{ fontSize:12, color:t.muted, marginTop:16 }}>Showing {shown} of {data.digits.length}…</div>
+        </>
+      ) : (
+        <>
+          <div style={{ fontSize:13, color:t.muted, marginBottom:20 }}>Type the digits you saw in order</div>
+          <input
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={input}
+            onChange={e => !submitted && setInput(e.target.value.replace(/\D/g,"").slice(0, data.digits.length))}
+            placeholder={"_ ".repeat(data.digits.length)}
+            autoFocus
+            style={{ width:"100%", maxWidth:220, height:56, borderRadius:R.md, border:`2px solid ${submitted?result?t.success:t.error:t.accent}`, background:t.surface, color:t.text, fontSize:28, fontFamily:L.mono, fontWeight:700, textAlign:"center", letterSpacing:6, outline:"none", boxSizing:"border-box" }}
+          />
+          <div style={{ marginTop:20 }}>
+            <button onClick={submit} disabled={submitted || input.length < data.digits.length}
+              style={{ width:"100%", height:48, borderRadius:R.md, border:"none", background:t.accent, color:"#fff", fontSize:16, fontWeight:700, fontFamily:L.font, cursor:submitted||input.length<data.digits.length?"default":"pointer", opacity:submitted||input.length<data.digits.length?.5:1 }}>
+              Submit
+            </button>
+          </div>
+          {submitted && <div style={{ marginTop:12, fontSize:14, fontWeight:700, color:result?t.success:t.error }}>{result ? "✓ Correct!" : `✗ Answer was: ${data.digits.join(" ")}`}</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── N-BACK TASK ─────────────────────────────────────────────────────────────────
+function NBackTask2({ t, data, idx: startIdx, total, onDone, tracker }) {
+  const [pos, setPos] = useState(0);
+  const [phase, setPhase] = useState("show"); // "show" | "respond"
+  const [responses, setResponses] = useState([]);
+  const [feedback, setFeedback] = useState(null);
+
+  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+
+  const advance = () => {
+    if (pos + 1 >= data.seq.length) {
+      // Done — compute accuracy
+      const correct = responses.filter((r, i) => r === data.targets[i+1]).length;
+      const acc = correct / (data.seq.length - 1);
+      const m = tracker.stop();
+      onDone({ acc, rt:m.rt, err:acc<0.5?1:0, ...m });
+    } else { setPos(p => p+1); setPhase("show"); setFeedback(null); }
+  };
+
+  useEffect(() => {
+    if (phase !== "show") return;
+    const timer = setTimeout(() => setPhase("respond"), 800);
+    return () => clearTimeout(timer);
+  }, [phase, pos]);
+
+  const respond = ans => {
+    if (phase !== "respond" || pos === 0) return;
+    const correct = ans === data.targets[pos];
+    tracker.click(correct);
+    setFeedback(correct ? "✓" : "✗");
+    setResponses(r => [...r, ans]);
+    setTimeout(advance, 400);
+  };
+
+  return (
+    <div style={{ textAlign:"center", padding:"0 12px" }}>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Item {pos+1} of {data.seq.length} — Is this the SAME as the previous letter?</div>
+      <div style={{ fontSize:"clamp(52px,18vw,80px)", fontFamily:L.mono, fontWeight:900, color:t.text, minHeight:"clamp(80px,22vw,100px)", display:"flex", alignItems:"center", justifyContent:"center", letterSpacing:4 }}>
+        {phase === "show" || phase === "respond" ? data.seq[pos] : ""}
+      </div>
+      {pos === 0 ? (
+        <div style={{ fontSize:13, color:t.muted, padding:"16px 0" }}>Remember this letter…</div>
+      ) : phase === "respond" && !feedback ? (
+        <div style={{ display:"flex", gap:16, justifyContent:"center", marginTop:8 }}>
+          {[{ l:"✓ Same", v:true, bg:t.success }, { l:"✗ Different", v:false, bg:t.error }].map(({ l, v, bg }) => (
+            <button key={String(v)} onClick={() => respond(v)}
+              style={{ flex:1, maxWidth:150, height:"clamp(48px,12vw,60px)", borderRadius:R.md, border:"none", background:bg, color:"#fff", fontSize:"clamp(14px,3.5vw,18px)", fontWeight:700, fontFamily:L.font, cursor:"pointer" }}>
+              {l}
+            </button>
+          ))}
+        </div>
+      ) : feedback ? (
+        <div style={{ fontSize:24, fontWeight:800, color:feedback==="✓"?t.success:t.error, marginTop:8 }}>{feedback}</div>
+      ) : null}
+    </div>
+  );
+}
+
 function NavTask({ t, data, idx, total, onDone, tracker }) {
   const [openRoot, setOpenRoot] = useState(null);
   const [done, setDone] = useState(false);
@@ -2265,7 +2383,7 @@ function ReadingCompTask({ t, data, idx, total, onDone, tracker }) {
   );
 }
 
-const TCOMPS = { visual_search:VisualSearchTask, flanker:FlankerTask, n_back:NBackTask, stroop:StroopTask, comparison:ComparisonTask, selection:SelectionTask, memory_recall:MemoryTask, arithmetic:ArithmeticTask, pattern:PatternTask, trail:TrailTask, email_sel:EmailSelTask, data_comp:DataCompTask, form_fill:FormFillTask, coded_recall:CodedRecallTask, nav_task:NavTask, reading_comp:ReadingCompTask };
+const TCOMPS = { visual_search:VisualSearchTask, flanker:FlankerTask, symbol_match:SymbolMatchTask, sentence_verify:SentenceVerifyTask, trail_making:TrailMakingTask, digit_span:DigitSpanTask, n_back:NBackTask2, nav_task:NavTask };
 
 // ─── SURVEYS ─────────────────────────────────────────────────────────────────────
 function NasaTLXScreen({ u, onDone }) {
