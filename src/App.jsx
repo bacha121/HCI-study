@@ -3145,9 +3145,8 @@ function ObjectiveTab({ user, u }) {
             })}
           </tbody>
         </table>
+        </div>
       </Card>
-
-      {/* Per-task breakdown */}
       <Card u={u} style={{ padding:0, overflow:"hidden" }}>
         <div style={{ padding:`${L.spMd}px ${L.spLg}px`, borderBottom:`1px solid ${u.border}` }}>
           <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Per-Task Performance</div>
