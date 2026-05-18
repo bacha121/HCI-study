@@ -2231,18 +2231,29 @@ function NBackTask2({ t, data, idx: startIdx, total, onDone, tracker }) {
   useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
 
   const advance = () => {
-    if (pos + 1 >= data.seq.length) {
-      // Done — compute accuracy
-      const correct = responses.filter((r, i) => r === data.targets[i+1]).length;
-      const acc = correct / (data.seq.length - 1);
+    const nextPos = pos + 1;
+    if (nextPos >= data.seq.length) {
+      const correct = responses.filter((r, i) => r === data.targets[i + 1]).length;
+      const acc = responses.length > 0 ? correct / responses.length : 0;
       const m = tracker.stop();
-      onDone({ acc, rt:m.rt, err:acc<0.5?1:0, ...m });
-    } else { setPos(p => p+1); setPhase("show"); setFeedback(null); }
+      onDone({ acc, rt: m.rt, err: acc < 0.5 ? 1 : 0, ...m });
+    } else {
+      setPos(nextPos); setPhase("show"); setFeedback(null);
+    }
   };
 
   useEffect(() => {
     if (phase !== "show") return;
-    const timer = setTimeout(() => setPhase("respond"), 800);
+    const timer = setTimeout(() => {
+      if (pos === 0) {
+        // First item — just show it, then move to item 2
+        setPos(1);
+        setPhase("show");
+        setFeedback(null);
+      } else {
+        setPhase("respond");
+      }
+    }, 900);
     return () => clearTimeout(timer);
   }, [phase, pos]);
 
@@ -2252,7 +2263,7 @@ function NBackTask2({ t, data, idx: startIdx, total, onDone, tracker }) {
     tracker.click(correct);
     setFeedback(correct ? "✓" : "✗");
     setResponses(r => [...r, ans]);
-    setTimeout(advance, 400);
+    setTimeout(advance, 500);
   };
 
   return (
