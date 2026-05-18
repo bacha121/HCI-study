@@ -5341,11 +5341,19 @@ export default function App() {
 
   if (screen === "tutorial") return <><style>{GCSS}</style><TutorialPage u={u} uiDark={uiDark} onToggleTheme={toggleTheme} onBack={() => setScreen("app")} /></>;
 
+  // Report renders full-page outside AppShell
+  if (screen === "app" && uiTab === "report") return (
+    <><style>{GCSS}</style>
+      <ExperimentErrorBoundary u={u} onReset={() => setUiTab("dashboard")}>
+        <ReportScreen user={user} u={u} onBack={() => setUiTab("dashboard")} />
+      </ExperimentErrorBoundary>
+    </>
+  );
+
   if (screen === "app") return (
     <><style>{GCSS}</style>
       <AppShell user={user} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} tab={uiTab} setTab={setUiTab} onLogout={logout}>
         {uiTab === "dashboard" && <Dashboard user={user} u={u} onStart={startExp} onProfile={() => setUiTab("profile")} onTutorial={() => setScreen("tutorial")} onReport={() => setUiTab("report")} />}
-        {uiTab === "report" && <ReportScreen user={user} u={u} onBack={() => setUiTab("dashboard")} />}
         {uiTab === "profile"   && <ProfilePage user={user} u={u} onSave={upd => setUser(upd)} />}
         {uiTab === "patterns"  && <PatternsTab user={user} u={u} />}
         {uiTab === "comfort"   && <VisualComfortTab user={user} u={u} />}
