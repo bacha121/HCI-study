@@ -2078,6 +2078,7 @@ function SymbolMatchTask({ t, data, idx, total, onDone, tracker }) {
     setTimeout(() => onDone({ acc: ok ? 1 : 0, rt: m.rt, err: ok ? 0 : 1, cl: m.cl }), 600);
   };
 
+  if (!data?.items) return null;
   return (
     <div style={{ textAlign:"center", padding:"0 8px" }}>
       <div style={{ fontSize:11, color:t.muted, marginBottom:4 }}>Trial {idx+1} of {total}</div>
@@ -2116,6 +2117,7 @@ function SentenceVerifyTask({ t, data, idx, total, onDone, tracker }) {
     setTimeout(() => onDone({ acc: ok ? 1 : 0, rt: m.rt, err: ok ? 0 : 1, cl: m.cl }), 600);
   };
 
+  if (!data?.s) return null;
   return (
     <div style={{ textAlign:"center", maxWidth:420, margin:"0 auto", padding:"0 12px" }}>
       <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Trial {idx+1} of {total}</div>
@@ -2169,6 +2171,7 @@ function TrailMakingTask({ t, data, idx, total, onDone, tracker }) {
     }
   };
 
+  if (!data?.nodes) return null;
   const COLS = 5, ROWS = 4;
   const cells = Array.from({ length: COLS * ROWS }, (_, i) => ({
     node: data.nodes.find(nd => nd.x === i % COLS && nd.y === Math.floor(i / COLS)),
@@ -2236,8 +2239,9 @@ function DigitSpanTask({ t, data, idx, total, onDone, tracker }) {
     setTimeout(() => onDone({ acc: ok ? 1 : 0, rt: m.rt, err: ok ? 0 : 1, cl: m.cl }), 800);
   };
 
-  const handleKey = e => { if (e.key === "Enter" && input.length >= data.digits.length) submit(); };
+  const handleKey = e => { if (e.key === "Enter" && input.length >= (data?.digits?.length||0)) submit(); };
 
+  if (!data?.digits) return null;
   return (
     <div style={{ textAlign:"center", padding:"0 12px", maxWidth:360, margin:"0 auto" }}>
       <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Trial {idx+1} of {total}</div>
@@ -2318,17 +2322,18 @@ function NBackTask2({ t, data, idx: startIdx, total, onDone, tracker }) {
   };
 
   const respond = ans => {
-    if (!canRespond || done.current) return;
+    if (!canRespond || done.current || !data?.targets) return;
     setCanRespond(false);
     const correct = ans === data.targets[pos];
     setFeedback(correct ? "✓" : "✗");
     responses.current = [...responses.current, ans];
     setTimeout(() => {
-      if (pos + 1 >= data.seq.length) { finish(); }
+      if (pos + 1 >= (data.seq?.length||0)) { finish(); }
       else { setPos(p => p + 1); }
     }, 450);
   };
 
+  if (!data?.seq) return null;
   return (
     <div style={{ textAlign:"center", padding:"0 12px" }}>
       <div style={{ fontSize:11, color:t.muted, marginBottom:4 }}>Trial {startIdx+1} of {total}</div>
