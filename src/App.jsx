@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 // ─── SUPABASE CONFIG ─────────────────────────────────────────────────────────────
@@ -907,6 +907,35 @@ const gen = {
   },
 
 };
+
+// ─── EXPERIMENT ERROR BOUNDARY ───────────────────────────────────────────────────
+class ExperimentErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e) { console.error("Experiment crash:", e); }
+  render() {
+    if (this.state.error) {
+      const u = this.props.u;
+      return (
+        <div style={{ minHeight:"100vh", background:u?.bg||"#fff", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", fontFamily:"'DM Sans',system-ui,sans-serif", padding:24 }}>
+          <div style={{ fontSize:40, marginBottom:16 }}>⚠️</div>
+          <div style={{ fontSize:18, fontWeight:700, color:u?.text||"#111", marginBottom:8 }}>Something went wrong</div>
+          <div style={{ fontSize:13, color:u?.text2||"#64748b", marginBottom:24, textAlign:"center", maxWidth:320 }}>
+            Your progress has been saved. Tap below to continue.
+          </div>
+          <button onClick={() => { this.setState({ error:null }); this.props.onReset?.(); }}
+            style={{ padding:"12px 28px", borderRadius:10, border:"none", background:u?.accent||"#4d8ef0", color:"#fff", fontSize:15, fontWeight:700, fontFamily:"inherit", cursor:"pointer" }}>
+            Continue Experiment →
+          </button>
+          <div style={{ marginTop:12, fontSize:11, color:u?.text3||"#94a3b8" }}>
+            Error: {this.state.error?.message}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── TRACKER HOOK ─────────────────────────────────────────────────────────────────
 function useTracker() {
@@ -5343,20 +5372,23 @@ export default function App() {
   if (screen === "task" && taskData) {
     const TC = TCOMPS[curType];
     const curData = taskData?.seq ? taskData : (Array.isArray(taskData) ? taskData[trialIdx] : taskData);
+    const safeDone = res => { try { handleTrialDone(res); } catch(e) { console.error("Trial done error:", e); setScreen("task_brief"); } };
     return (
-      <><style>{GCSS}</style><TimeoutOverlay />
-        {/* Touch event wrapper — captures touch path, duration, radius across all task types */}
-        <div
-          onTouchStart={tracker.onTouchStart} onTouchEnd={tracker.onTouchEnd} onTouchMove={tracker.onTouchMove}
-          onClickCapture={e => { const r = e.currentTarget.getBoundingClientRect(); tracker.captureClick(e.clientX, e.clientY, r); }}
-          style={{ minHeight:"100vh" }}>
-          <ExpPage showProgress>
-            <div style={{ maxWidth: L.taskW, margin: "0 auto" }}>
-              {TC && <TC key={`${curType}-${trialIdx}-p${phase}`} t={t} data={curData} idx={trialIdx} total={taskData?.seq ? taskData.n : taskData.length} onDone={handleTrialDone} tracker={tracker} />}
-            </div>
-          </ExpPage>
-        </div>
-      </>
+      <ExperimentErrorBoundary u={u} onReset={() => setScreen("task_brief")}>
+        <><style>{GCSS}</style><TimeoutOverlay />
+          <div
+            onTouchStart={tracker.onTouchStart} onTouchEnd={tracker.onTouchEnd} onTouchMove={tracker.onTouchMove}
+            onClickCapture={e => { try { const r = e.currentTarget.getBoundingClientRect(); tracker.captureClick(e.clientX, e.clientY, r); } catch(e){} }}
+            style={{ minHeight:"100vh" }}>
+            <ExpPage showProgress>
+              <div style={{ maxWidth: L.taskW, margin: "0 auto" }}>
+                {TC ? <TC key={`${curType}-${trialIdx}-p${phase}`} t={t} data={curData} idx={trialIdx} total={taskData?.seq ? taskData.n : (taskData.length || 1)} onDone={safeDone} tracker={tracker} />
+                : <div style={{ textAlign:"center", color:t.muted, padding:40 }}>Loading task…</div>}
+              </div>
+            </ExpPage>
+          </div>
+        </>
+      </ExperimentErrorBoundary>
     );
   }
 
