@@ -855,7 +855,6 @@ const gen = {
     return { display: [f, f, a, f, f], dir, cong };
   },
   // ── New validated tasks ─────────────────────────────────────────────────────────
-  // ── New validated tasks ─────────────────────────────────────────────────────────
   symbol_match() {
     const pool = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789#@$%&".split("");
     const target = pool[Math.floor(Math.random() * pool.length)];
@@ -904,6 +903,20 @@ const gen = {
       else { let l; do { l = AL[Math.floor(Math.random()*AL.length)]; } while (l===seq[i-1]); seq.push(l); targets.push(false); }
     }
     return { seq, targets, n };
+  },
+  nav_task() {
+    const TREE = {
+      Settings:  ["Profile Settings","Notifications","Privacy","Security","Language","Accessibility","Theme","Data Export"],
+      Dashboard: ["Overview","Analytics","Reports","Live Monitor","Metrics","Activity Log","Exports","Insights"],
+      Account:   ["My Profile","Billing","Subscription","Usage","API Keys","Connected Apps","Sessions","Delete Account"],
+      Help:      ["Getting Started","FAQs","Video Tutorials","Contact Support","Release Notes","Community","Status","Feedback"],
+      Tools:     ["Import Data","Export Data","Templates","Integrations","Automation","Scheduler","Bulk Edit","Archive"],
+    };
+    const roots = Object.keys(TREE);
+    const root  = roots[Math.floor(Math.random() * roots.length)];
+    const items = TREE[root];
+    const item  = items[Math.floor(Math.random() * items.length)];
+    return { roots, tree: TREE, target: { root, item }, path: `${root} → ${item}` };
   },
 
 };
@@ -1457,9 +1470,13 @@ const eBtn = (t, active = false) => ({ padding: `${L.spSm}px ${L.spMd}px`, borde
 
 // ─── TASK COMPONENTS ──────────────────────────────────────────────────────────────
 function VisualSearchTask({ t, data, idx, total, onDone, tracker }) {
-  const [items, setItems] = useState(() => data.items.map(i => ({ ...i })));
+  const [items, setItems] = useState(() => (data?.items || []).map(i => ({ ...i })));
   const found = items.filter(i => i.hit && i.ok).length;
-  useEffect(() => { setItems(data.items.map(i => ({ ...i }))); tracker.start(); setTimeout(() => tracker.setOnset(), 60); }, [data]);
+  useEffect(() => {
+    if (!data?.items) return;
+    setItems(data.items.map(i => ({ ...i }))); tracker.start(); setTimeout(() => tracker.setOnset(), 60);
+  }, [data]);
+  if (!data?.items) return null;
   const tap = id => {
     const item = items.find(i => i.id === id); if (item?.hit) return;
     tracker.click(item?.ok ?? false);
@@ -1498,10 +1515,12 @@ function FlankerTask({ t, data, idx, total, onDone, tracker }) {
   const [fb, setFb] = useState(null);
   const [lastRT, setLastRT] = useState(null);
   useEffect(() => {
+    if (!data?.dir) return;
     setPh("fix"); setDone(false); setFb(null); setLastRT(null); tracker.start();
     const t1 = setTimeout(() => { setPh("stim"); tracker.setOnset(); }, 650);
     return () => clearTimeout(t1);
   }, [data]);
+  if (!data?.display) return null;
   const respond = dir => {
     if (done) return; const rt = tracker.recordRT(); setLastRT(rt);
     const ok = dir === data.dir; tracker.click(ok); setDone(true); setFb(ok);
@@ -2367,7 +2386,11 @@ function NavTask({ t, data, idx, total, onDone, tracker }) {
   const [openRoot, setOpenRoot] = useState(null);
   const [done, setDone] = useState(false);
   const [errors, setErrors] = useState(0);
-  useEffect(() => { setOpenRoot(null); setDone(false); setErrors(0); tracker.start(); setTimeout(() => tracker.setOnset(), 60); }, [data]);
+  useEffect(() => {
+    if (!data?.roots) return;
+    setOpenRoot(null); setDone(false); setErrors(0); tracker.start(); setTimeout(() => tracker.setOnset(), 60);
+  }, [data]);
+  if (!data?.roots || !data?.tree) return null;
   const clickRoot = root => {
     if (done) return;
     if (root !== data.target.root) { tracker.click(false); setErrors(e => e+1); }
