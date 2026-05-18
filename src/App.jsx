@@ -4398,14 +4398,14 @@ function generateInsights(stats, user, nasa, dkC, ltC) {
   // ── Task-level insights ──────────────────────────────────────────────────────
   const taskInsights = {};
   const taskDescriptions = {
-    visual_search:  { name:"Visual Search",      what:"your ability to locate a target among distractors — a skill used constantly when scanning documents, dashboards, or emails." },
-    flanker:        { name:"Inhibitory Control",  what:"your ability to ignore irrelevant information and focus on what matters — critical for avoiding distractions in busy work environments." },
-    comparison:     { name:"Analytical Thinking", what:"your ability to compare and evaluate data accurately — directly relevant to decision-making and data analysis tasks." },
-    reading_comp:   { name:"Reading Comprehension", what:"how accurately you absorb and retain written information — fundamental to any knowledge work." },
-    email_sel:      { name:"Decision Making",     what:"your ability to select the most appropriate option under time pressure — mirroring real-world email triage and task prioritisation." },
-    form_fill:      { name:"Precision & Accuracy", what:"your accuracy when entering structured information — relevant to data entry, form completion, and administrative tasks." },
-    memory_recall:  { name:"Working Memory",      what:"how well you hold and retrieve information over short periods — the foundation of multi-step problem solving." },
-    nav_task:       { name:"Navigation",          what:"your ability to move efficiently through menu structures — reflecting everyday software and web navigation." },
+    visual_search:   { name:"Visual Search",          what:"your ability to locate a target among distractors — used constantly when scanning documents, dashboards, or emails." },
+    flanker:         { name:"Inhibitory Control",     what:"your ability to ignore irrelevant information and focus on what matters — critical for avoiding distractions." },
+    symbol_match:    { name:"Symbol Matching",        what:"your pattern recognition ability — how quickly and accurately you can identify matching visual information." },
+    sentence_verify: { name:"Sentence Verification",  what:"how accurately you read and evaluate written statements — fundamental to any knowledge work." },
+    trail_making:    { name:"Trail Making",            what:"your planning and sequencing ability — the capacity to organise steps in the right order efficiently." },
+    digit_span:      { name:"Digit Span",              what:"your verbal working memory — how well you hold and recall short sequences of information." },
+    n_back:          { name:"N-Back Memory",           what:"your memory updating ability — a core component of multi-step problem solving and active learning." },
+    nav_task:        { name:"Navigation",              what:"your ability to move efficiently through menu structures — reflecting everyday software and web navigation." },
   };
 
   CFG.tasks.forEach(tid => {
@@ -4425,14 +4425,14 @@ function generateInsights(stats, user, nasa, dkC, ltC) {
 
   // ── Workload insight ─────────────────────────────────────────────────────────
   let workloadInsight = "";
-  const nasaDkScore = exps.find(e => e.theme === "dark"  && e.nasaTLX)?.nasaTLX?.totalScore;
-  const nasaLtScore = exps.find(e => e.theme === "light" && e.nasaTLX)?.nasaTLX?.totalScore;
-  if (nasaDkScore != null || nasaLtScore != null) {
-    const lower = nasaDkScore != null && nasaLtScore != null ? (nasaDkScore < nasaLtScore ? "dark" : "light") : null;
-    const ref = lower === "dark" ? nasaDkScore : lower === "light" ? nasaLtScore : (nasaDkScore ?? nasaLtScore);
-    if (ref < 7) workloadInsight = `Your workload scores were low (🌙 ${nasaDkScore?.toFixed(1) ?? "—"} · ☀️ ${nasaLtScore?.toFixed(1) ?? "—"} out of 20), indicating the tasks felt manageable and comfortable across both conditions — a very positive outcome.`;
-    else if (ref < 13) workloadInsight = `Your workload scores reflect moderate cognitive effort (🌙 ${nasaDkScore?.toFixed(1) ?? "—"} · ☀️ ${nasaLtScore?.toFixed(1) ?? "—"} out of 20). This is expected when engaging with unfamiliar tasks.${lower ? ` Notably, ${lower} mode produced lower workload.` : ""}`;
-    else workloadInsight = `Your workload scores suggest the tasks were cognitively demanding (🌙 ${nasaDkScore?.toFixed(1) ?? "—"} · ☀️ ${nasaLtScore?.toFixed(1) ?? "—"} out of 20). With repeated exposure to similar interfaces, perceived workload typically decreases substantially.`;
+  const nasaDkScore = dkC != null ? (nasa?.totalScore ?? null) : null;
+  const _ndk = typeof dkNasaScore !== 'undefined' ? dkNasaScore : (nasa?.totalScore ?? null);
+  const _nlt = typeof ltNasaScore !== 'undefined' ? ltNasaScore : null;
+  const nasaScore = nasa?.totalScore;
+  if (nasaScore != null) {
+    if (nasaScore < 7) workloadInsight = `Your overall workload score of ${nasaScore.toFixed(1)} out of 20 indicates a low cognitive load experience — the tasks felt manageable and you did not experience significant mental fatigue. This is a very positive result.`;
+    else if (nasaScore < 13) workloadInsight = `Your workload score of ${nasaScore.toFixed(1)} out of 20 reflects a moderate level of cognitive effort. This is the expected range for unfamiliar tasks — it shows genuine engagement without overwhelming strain.`;
+    else workloadInsight = `Your workload score of ${nasaScore.toFixed(1)} out of 20 suggests the tasks were cognitively demanding. This is common when encountering new interface types for the first time. With repeated exposure, perceived workload drops substantially.`;
   }
 
   // ── Recommendation ───────────────────────────────────────────────────────────
