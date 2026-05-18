@@ -5226,8 +5226,10 @@ export default function App() {
 
   const startExp = () => {
     if (user.completed || (user.experiments || []).length >= 2) return; // one attempt only
-    const first = Math.random() < .5 ? "dark" : "light";
-    const group = first === "dark" ? "DL" : "LD"; // Dark-first or Light-first
+    // Systematic counterbalancing — alternate DL/LD based on completed participant count
+    const completed = db.all().filter(x => x.role !== "admin" && x.orderGroup).length;
+    const group = completed % 2 === 0 ? "DL" : "LD";
+    const first = group === "DL" ? "dark" : "light";
     const upd = { ...user, orderGroup: group };
     setUser(upd); db.save(upd);
     setP1Theme(first); setTaskOrder(shuf([...CFG.tasks]));
