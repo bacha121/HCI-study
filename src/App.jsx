@@ -890,19 +890,20 @@ const gen = {
     return { nodes: positions.map((p, i) => ({ ...p, n: nums[i] })), total: n };
   },
   digit_span() {
-    const len = 4 + Math.floor(Math.random() * 2); // 4 or 5 digits
-    return { digits: Array.from({ length:len }, () => Math.floor(Math.random() * 10)) };
+    const len = 4 + Math.floor(Math.random() * 2);
+    return { digits: Array.from({ length: len }, () => Math.floor(Math.random() * 10)) };
   },
   n_back() {
     const AL = "BCDFGHJKLMNPQRSTVWXZ".split("");
+    const n = CFG.TN.n_back;
     const seq = [AL[Math.floor(Math.random() * AL.length)]];
     const targets = [false];
-    for (let i = 1; i < CFG.TN.n_back; i++) {
-      const isTarget = i >= 1 && Math.random() < 0.35;
+    for (let i = 1; i < n; i++) {
+      const isTarget = Math.random() < 0.35;
       if (isTarget) { seq.push(seq[i-1]); targets.push(true); }
       else { let l; do { l = AL[Math.floor(Math.random()*AL.length)]; } while (l===seq[i-1]); seq.push(l); targets.push(false); }
     }
-    return { seq, targets };
+    return { seq, targets, n };
   },
 
 };
@@ -2035,30 +2036,32 @@ function CodedRecallTask({ t, data, idx, total, onDone, tracker }) {
 // ─── SYMBOL MATCH TASK ───────────────────────────────────────────────────────────
 function SymbolMatchTask({ t, data, idx, total, onDone, tracker }) {
   const [sel, setSel] = useState(null);
-  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+  const ref = useRef(false);
+  useEffect(() => { tracker.start(); tracker.setOnset(); }, []);
 
   const pick = item => {
-    if (sel !== null) return;
+    if (ref.current) return;
+    ref.current = true;
     const ok = item === data.target;
     setSel(item);
     tracker.click(ok);
     const m = tracker.stop();
-    setTimeout(() => onDone({ acc:ok?1:0, rt:m.rt, err:ok?0:1, ...m }), 500);
+    setTimeout(() => onDone({ acc: ok ? 1 : 0, rt: m.rt, err: ok ? 0 : 1, cl: m.cl }), 600);
   };
 
   return (
     <div style={{ textAlign:"center", padding:"0 8px" }}>
-      <div style={{ fontSize:11, color:t.muted, marginBottom:12 }}>Trial {idx+1} of {total} — Tap the matching symbol</div>
-      <div style={{ fontSize:"clamp(52px,15vw,72px)", fontFamily:L.mono, fontWeight:700, color:t.text, marginBottom:20, letterSpacing:4 }}>{data.target}</div>
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"clamp(6px,2vw,10px)", maxWidth:280, margin:"0 auto" }}>
-        {data.items.map(item => {
-          const isTarget = item === data.target;
+      <div style={{ fontSize:11, color:t.muted, marginBottom:4 }}>Trial {idx+1} of {total}</div>
+      <div style={{ fontSize:13, color:t.muted, marginBottom:16 }}>Find the matching symbol</div>
+      <div style={{ fontSize:"clamp(52px,15vw,72px)", fontFamily:L.mono, fontWeight:900, color:t.text, marginBottom:24, letterSpacing:4 }}>{data.target}</div>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"clamp(8px,2vw,12px)", maxWidth:280, margin:"0 auto" }}>
+        {data.items.map((item,i) => {
           const picked = sel === item;
-          let bg=t.surface, color=t.text, border=t.border;
-          if (picked) { bg=isTarget?t.successBg:t.errorBg; color=isTarget?t.success:t.error; border=isTarget?t.success:t.error; }
+          const ok = item === data.target;
+          let bg = t.surface, color = t.text, border = t.border;
+          if (picked) { bg = ok ? t.successBg : t.errorBg; color = ok ? t.success : t.error; border = ok ? t.success : t.error; }
           return (
-            <button key={item} onClick={() => pick(item)}
-              style={{ height:"clamp(52px,14vw,64px)", borderRadius:R.md, border:`1.5px solid ${border}`, background:bg, color, fontSize:"clamp(18px,5vw,26px)", fontFamily:L.mono, fontWeight:700, cursor:sel!==null?"default":"pointer", transition:"all .1s" }}>
+            <button key={i} onClick={() => pick(item)} style={{ height:"clamp(56px,15vw,68px)", borderRadius:R.md, border:`2px solid ${border}`, background:bg, color, fontSize:"clamp(20px,6vw,28px)", fontFamily:L.mono, fontWeight:700, cursor:ref.current?"default":"pointer", transition:"all .12s" }}>
               {item}
             </button>
           );
@@ -2070,31 +2073,39 @@ function SymbolMatchTask({ t, data, idx, total, onDone, tracker }) {
 
 // ─── SENTENCE VERIFY TASK ────────────────────────────────────────────────────────
 function SentenceVerifyTask({ t, data, idx, total, onDone, tracker }) {
-  const [done, setDone] = useState(false);
-  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+  const [ans, setAns] = useState(null);
+  const ref = useRef(false);
+  useEffect(() => { tracker.start(); tracker.setOnset(); }, []);
 
-  const respond = ans => {
-    if (done) return;
-    setDone(true);
-    const ok = ans === data.a;
+  const respond = val => {
+    if (ref.current) return;
+    ref.current = true;
+    const ok = val === data.a;
+    setAns(val);
     tracker.click(ok);
     const m = tracker.stop();
-    onDone({ acc:ok?1:0, rt:m.rt, err:ok?0:1, ...m });
+    setTimeout(() => onDone({ acc: ok ? 1 : 0, rt: m.rt, err: ok ? 0 : 1, cl: m.cl }), 600);
   };
 
   return (
     <div style={{ textAlign:"center", maxWidth:420, margin:"0 auto", padding:"0 12px" }}>
-      <div style={{ fontSize:11, color:t.muted, marginBottom:20 }}>Trial {idx+1} of {total} — Is this statement true or false?</div>
-      <div style={{ fontSize:"clamp(18px,4.5vw,24px)", fontWeight:700, color:t.text, marginBottom:36, lineHeight:1.5, padding:"20px 24px", background:t.surface, borderRadius:R.lg, border:`1px solid ${t.border}` }}>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Trial {idx+1} of {total}</div>
+      <div style={{ fontSize:13, color:t.muted, marginBottom:20 }}>Is this statement TRUE or FALSE?</div>
+      <div style={{ fontSize:"clamp(17px,4.5vw,22px)", fontWeight:700, color:t.text, lineHeight:1.5, padding:"20px 24px", background:t.surface, borderRadius:R.lg, border:`1px solid ${t.border}`, marginBottom:28 }}>
         {data.s}
       </div>
       <div style={{ display:"flex", gap:16, justifyContent:"center" }}>
-        {[{ ans:true, l:"✓ True", bg:t.success }, { ans:false, l:"✗ False", bg:t.error }].map(({ ans, l, bg }) => (
-          <button key={String(ans)} onClick={() => respond(ans)} disabled={done}
-            style={{ flex:1, maxWidth:160, height:"clamp(48px,12vw,60px)", borderRadius:R.md, border:"none", background:bg, color:"#fff", fontSize:"clamp(15px,4vw,19px)", fontWeight:700, fontFamily:L.font, cursor:done?"default":"pointer", opacity:done?.7:1 }}>
-            {l}
-          </button>
-        ))}
+        {[{ val:true, l:"✓  True" }, { val:false, l:"✗  False" }].map(({ val, l }) => {
+          const picked = ans === val;
+          const ok = val === data.a;
+          const bg = picked ? (ok ? t.success : t.error) : t.accent;
+          return (
+            <button key={String(val)} onClick={() => respond(val)} disabled={ref.current}
+              style={{ flex:1, maxWidth:160, height:"clamp(52px,13vw,60px)", borderRadius:R.md, border:"none", background:bg, color:"#fff", fontSize:"clamp(15px,4vw,18px)", fontWeight:700, fontFamily:L.font, cursor:ref.current?"default":"pointer", opacity:ref.current&&!picked?.4:1, transition:"all .15s" }}>
+              {l}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -2105,116 +2116,134 @@ function TrailMakingTask({ t, data, idx, total, onDone, tracker }) {
   const [next, setNext] = useState(1);
   const [tapped, setTapped] = useState([]);
   const [hadErr, setHadErr] = useState(false);
-  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+  const [done, setDone] = useState(false);
+  const ref = useRef(false);
+  useEffect(() => { tracker.start(); tracker.setOnset(); }, []);
 
   const tap = n => {
-    if (tapped.includes(n)) return;
+    if (ref.current || done || tapped.includes(n)) return;
     if (n === next) {
       tracker.click(true);
       const newTapped = [...tapped, n];
       setTapped(newTapped);
       if (next === data.total) {
+        ref.current = true;
+        setDone(true);
         const m = tracker.stop();
-        onDone({ acc:hadErr?0.7:1, rt:m.rt, err:hadErr?1:0, ...m });
-      } else { setNext(next + 1); }
+        setTimeout(() => onDone({ acc: hadErr ? 0.6 : 1, rt: m.rt, err: hadErr ? 1 : 0, cl: m.cl }), 800);
+      } else {
+        setNext(next + 1);
+      }
     } else {
       tracker.click(false);
       setHadErr(true);
     }
   };
 
-  // 5×4 grid layout
   const COLS = 5, ROWS = 4;
-  const cells = Array.from({ length: COLS*ROWS }, (_,i) => {
-    const node = data.nodes.find(nd => nd.x === i%COLS && nd.y === Math.floor(i/COLS));
-    return { idx:i, node };
-  });
+  const cells = Array.from({ length: COLS * ROWS }, (_, i) => ({
+    node: data.nodes.find(nd => nd.x === i % COLS && nd.y === Math.floor(i / COLS)),
+    ci: i,
+  }));
 
   return (
     <div style={{ textAlign:"center", padding:"0 8px" }}>
-      <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Trial {idx+1} of {total} — Tap numbers 1 → {data.total} in order</div>
-      <div style={{ fontSize:13, fontWeight:700, color:t.accent, marginBottom:16 }}>Next: {next}</div>
-      <div style={{ display:"grid", gridTemplateColumns:`repeat(${COLS},1fr)`, gap:"clamp(4px,1.5vw,8px)", maxWidth:320, margin:"0 auto" }}>
-        {cells.map(({ idx:ci, node }) => {
-          if (!node) return <div key={ci} />;
-          const done2 = tapped.includes(node.n);
-          const isNext = node.n === next;
-          return (
-            <button key={ci} onClick={() => tap(node.n)}
-              style={{ height:"clamp(50px,13vw,62px)", borderRadius:"50%", border:`2px solid ${done2?t.success:isNext?t.accent:t.border}`, background:done2?t.successBg:isNext?`${t.accent}18`:t.surface, color:done2?t.success:isNext?t.accent:t.text, fontSize:"clamp(16px,4.5vw,22px)", fontWeight:800, fontFamily:L.mono, cursor:done2||tapped.length>=data.total?"default":"pointer", transition:"all .15s" }}>
-              {node.n}
-            </button>
-          );
-        })}
-      </div>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Trial {idx+1} of {total} — Tap 1 → {data.total} in order</div>
+      {done ? (
+        <div style={{ fontSize:36, marginTop:40, color:t.success }}>✓ Done!</div>
+      ) : (
+        <>
+          <div style={{ display:"inline-block", padding:"4px 16px", borderRadius:R.pill, background:`${t.accent}18`, color:t.accent, fontSize:13, fontWeight:700, marginBottom:16 }}>Next: {next}</div>
+          <div style={{ display:"grid", gridTemplateColumns:`repeat(${COLS},1fr)`, gap:"clamp(6px,2vw,10px)", maxWidth:300, margin:"0 auto" }}>
+            {cells.map(({ node, ci }) => {
+              if (!node) return <div key={ci} style={{ height:"clamp(52px,13vw,62px)" }} />;
+              const isDone = tapped.includes(node.n);
+              const isNext = node.n === next;
+              return (
+                <button key={ci} onClick={() => tap(node.n)} style={{ height:"clamp(52px,13vw,62px)", borderRadius:"50%", border:`2.5px solid ${isDone?t.success:isNext?t.accent:t.border}`, background:isDone?t.successBg:isNext?`${t.accent}20`:t.surface, color:isDone?t.success:isNext?t.accent:t.text, fontSize:"clamp(17px,5vw,23px)", fontWeight:800, fontFamily:L.mono, cursor:"pointer", transition:"all .12s" }}>
+                  {node.n}
+                </button>
+              );
+            })}
+          </div>
+          {hadErr && <div style={{ fontSize:12, color:t.error, marginTop:10 }}>Wrong order — keep going in sequence</div>}
+        </>
+      )}
     </div>
   );
 }
 
 // ─── DIGIT SPAN TASK ─────────────────────────────────────────────────────────────
 function DigitSpanTask({ t, data, idx, total, onDone, tracker }) {
-  const [phase, setPhase] = useState("show"); // "show" | "recall"
+  const [phase, setPhase] = useState("show");
   const [shown, setShown] = useState(0);
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState(false);
-  const [result, setResult] = useState(null);
+  const [correct, setCorrect] = useState(null);
+  const ref = useRef(false);
 
   useEffect(() => { tracker.start(); }, []);
 
+  // Show digits one at a time
   useEffect(() => {
     if (phase !== "show") return;
     if (shown < data.digits.length) {
-      const t2 = setTimeout(() => setShown(s => s + 1), 700);
-      return () => clearTimeout(t2);
+      const tid = setTimeout(() => setShown(s => s + 1), 750);
+      return () => clearTimeout(tid);
     } else {
-      const t2 = setTimeout(() => { setPhase("recall"); tracker.setOnset(Date.now()); }, 500);
-      return () => clearTimeout(t2);
+      const tid = setTimeout(() => { setPhase("recall"); tracker.setOnset(); }, 500);
+      return () => clearTimeout(tid);
     }
   }, [phase, shown]);
 
   const submit = () => {
-    if (submitted) return;
+    if (ref.current || submitted) return;
+    ref.current = true;
+    const ok = input.trim() === data.digits.join("");
     setSubmitted(true);
-    const ok = input === data.digits.join("");
-    setResult(ok);
+    setCorrect(ok);
     tracker.click(ok);
     const m = tracker.stop();
-    setTimeout(() => onDone({ acc:ok?1:0, rt:m.rt, err:ok?0:1, ...m }), 700);
+    setTimeout(() => onDone({ acc: ok ? 1 : 0, rt: m.rt, err: ok ? 0 : 1, cl: m.cl }), 800);
   };
 
+  const handleKey = e => { if (e.key === "Enter" && input.length >= data.digits.length) submit(); };
+
   return (
-    <div style={{ textAlign:"center", padding:"0 12px" }}>
-      <div style={{ fontSize:11, color:t.muted, marginBottom:16 }}>Trial {idx+1} of {total}</div>
+    <div style={{ textAlign:"center", padding:"0 12px", maxWidth:360, margin:"0 auto" }}>
+      <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Trial {idx+1} of {total}</div>
       {phase === "show" ? (
         <>
           <div style={{ fontSize:13, color:t.muted, marginBottom:24 }}>Remember this sequence</div>
-          <div style={{ display:"flex", gap:12, justifyContent:"center", alignItems:"center", minHeight:80 }}>
-            {data.digits.slice(0, shown).map((d, i) => (
-              <div key={i} style={{ width:"clamp(44px,12vw,56px)", height:"clamp(44px,12vw,56px)", borderRadius:R.md, background:t.surface, border:`1px solid ${t.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"clamp(22px,6vw,30px)", fontWeight:800, fontFamily:L.mono, color:t.text }}>{d}</div>
+          <div style={{ display:"flex", gap:10, justifyContent:"center", minHeight:72, alignItems:"center" }}>
+            {Array.from({ length: data.digits.length }, (_, i) => (
+              <div key={i} style={{ width:"clamp(44px,11vw,56px)", height:"clamp(44px,11vw,56px)", borderRadius:R.md, background: i < shown ? t.surface : "transparent", border: i < shown ? `1px solid ${t.border}` : `1px dashed ${t.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:"clamp(22px,6vw,30px)", fontWeight:900, fontFamily:L.mono, color:t.text, transition:"all .2s" }}>
+                {i < shown ? data.digits[i] : ""}
+              </div>
             ))}
           </div>
-          <div style={{ fontSize:12, color:t.muted, marginTop:16 }}>Showing {shown} of {data.digits.length}…</div>
+          <div style={{ fontSize:12, color:t.muted, marginTop:12 }}>{shown < data.digits.length ? `${shown} of ${data.digits.length} digits shown…` : "Get ready to recall…"}</div>
         </>
       ) : (
         <>
-          <div style={{ fontSize:13, color:t.muted, marginBottom:20 }}>Type the digits you saw in order</div>
+          <div style={{ fontSize:13, color:t.muted, marginBottom:20 }}>Enter the digits you just saw</div>
           <input
             type="tel"
             inputMode="numeric"
             pattern="[0-9]*"
+            autoFocus
             value={input}
             onChange={e => !submitted && setInput(e.target.value.replace(/\D/g,"").slice(0, data.digits.length))}
-            placeholder={"_ ".repeat(data.digits.length)}
-            autoFocus
-            style={{ width:"100%", maxWidth:220, height:56, borderRadius:R.md, border:`2px solid ${submitted?result?t.success:t.error:t.accent}`, background:t.surface, color:t.text, fontSize:28, fontFamily:L.mono, fontWeight:700, textAlign:"center", letterSpacing:6, outline:"none", boxSizing:"border-box" }}
+            onKeyDown={handleKey}
+            style={{ width:"100%", height:60, borderRadius:R.md, border:`2px solid ${submitted ? (correct ? t.success : t.error) : t.accent}`, background:t.surface, color:t.text, fontSize:30, fontFamily:L.mono, fontWeight:700, textAlign:"center", letterSpacing:8, outline:"none", boxSizing:"border-box", WebkitAppearance:"none" }}
           />
-          <div style={{ marginTop:20 }}>
-            <button onClick={submit} disabled={submitted || input.length < data.digits.length}
-              style={{ width:"100%", height:48, borderRadius:R.md, border:"none", background:t.accent, color:"#fff", fontSize:16, fontWeight:700, fontFamily:L.font, cursor:submitted||input.length<data.digits.length?"default":"pointer", opacity:submitted||input.length<data.digits.length?.5:1 }}>
-              Submit
-            </button>
-          </div>
-          {submitted && <div style={{ marginTop:12, fontSize:14, fontWeight:700, color:result?t.success:t.error }}>{result ? "✓ Correct!" : `✗ Answer was: ${data.digits.join(" ")}`}</div>}
+          <div style={{ fontSize:12, color:t.muted, marginTop:6 }}>{data.digits.length} digit{data.digits.length > 1 ? "s" : ""} · tap each number</div>
+          <button
+            onClick={submit}
+            disabled={submitted || input.length < data.digits.length}
+            style={{ marginTop:20, width:"100%", height:52, borderRadius:R.md, border:"none", background: submitted || input.length < data.digits.length ? t.border : t.accent, color: submitted || input.length < data.digits.length ? t.muted : t.accentFg, fontSize:16, fontWeight:700, fontFamily:L.font, cursor: submitted || input.length < data.digits.length ? "default" : "pointer", transition:"all .15s" }}>
+            {submitted ? (correct ? "✓ Correct!" : `✗ Answer: ${data.digits.join(" ")}`) : "Submit →"}
+          </button>
         </>
       )}
     </div>
@@ -2224,72 +2253,82 @@ function DigitSpanTask({ t, data, idx, total, onDone, tracker }) {
 // ─── N-BACK TASK ─────────────────────────────────────────────────────────────────
 function NBackTask2({ t, data, idx: startIdx, total, onDone, tracker }) {
   const [pos, setPos] = useState(0);
-  const [phase, setPhase] = useState("show"); // "show" | "respond"
-  const [responses, setResponses] = useState([]);
+  const [showLetter, setShowLetter] = useState(true);
+  const [canRespond, setCanRespond] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const responses = useRef([]);
+  const done = useRef(false);
 
-  useEffect(() => { tracker.start(); tracker.setOnset(Date.now()); }, []);
+  useEffect(() => { tracker.start(); tracker.setOnset(); }, []);
 
-  const advance = () => {
-    const nextPos = pos + 1;
-    if (nextPos >= data.seq.length) {
-      const correct = responses.filter((r, i) => r === data.targets[i + 1]).length;
-      const acc = responses.length > 0 ? correct / responses.length : 0;
-      const m = tracker.stop();
-      onDone({ acc, rt: m.rt, err: acc < 0.5 ? 1 : 0, ...m });
-    } else {
-      setPos(nextPos); setPhase("show"); setFeedback(null);
-    }
-  };
-
+  // Sequence driver
   useEffect(() => {
-    if (phase !== "show") return;
-    const timer = setTimeout(() => {
+    if (done.current) return;
+    setShowLetter(true);
+    setCanRespond(false);
+    setFeedback(null);
+    const showTimer = setTimeout(() => {
       if (pos === 0) {
-        // First item — just show it, then move to item 2
-        setPos(1);
-        setPhase("show");
-        setFeedback(null);
+        // First item — no response needed, auto-advance after showing
+        const nextTimer = setTimeout(() => setPos(1), 400);
+        return () => clearTimeout(nextTimer);
       } else {
-        setPhase("respond");
+        setCanRespond(true);
       }
     }, 900);
-    return () => clearTimeout(timer);
-  }, [phase, pos]);
+    return () => clearTimeout(showTimer);
+  }, [pos]);
+
+  const finish = () => {
+    done.current = true;
+    const n = responses.current.length;
+    const correct = responses.current.filter((r, i) => r === data.targets[i + 1]).length;
+    const acc = n > 0 ? correct / n : 0;
+    const m = tracker.stop();
+    onDone({ acc, rt: m.rt, err: acc < 0.5 ? 1 : 0, cl: m.cl });
+  };
 
   const respond = ans => {
-    if (phase !== "respond" || pos === 0) return;
+    if (!canRespond || done.current) return;
+    setCanRespond(false);
     const correct = ans === data.targets[pos];
-    tracker.click(correct);
     setFeedback(correct ? "✓" : "✗");
-    setResponses(r => [...r, ans]);
-    setTimeout(advance, 500);
+    responses.current = [...responses.current, ans];
+    setTimeout(() => {
+      if (pos + 1 >= data.seq.length) { finish(); }
+      else { setPos(p => p + 1); }
+    }, 450);
   };
 
   return (
     <div style={{ textAlign:"center", padding:"0 12px" }}>
-      <div style={{ fontSize:11, color:t.muted, marginBottom:8 }}>Item {pos+1} of {data.seq.length} — Is this the SAME as the previous letter?</div>
-      <div style={{ fontSize:"clamp(52px,18vw,80px)", fontFamily:L.mono, fontWeight:900, color:t.text, minHeight:"clamp(80px,22vw,100px)", display:"flex", alignItems:"center", justifyContent:"center", letterSpacing:4 }}>
-        {phase === "show" || phase === "respond" ? data.seq[pos] : ""}
+      <div style={{ fontSize:11, color:t.muted, marginBottom:4 }}>Trial {startIdx+1} of {total}</div>
+      <div style={{ fontSize:12, color:t.muted, marginBottom:8 }}>Item {pos+1} of {data.seq.length} — Same as the previous letter?</div>
+      <div style={{ fontSize:"clamp(56px,18vw,86px)", fontFamily:L.mono, fontWeight:900, letterSpacing:4, color: feedback ? (feedback==="✓"?t.success:t.error) : t.text, minHeight:"clamp(80px,22vw,110px)", display:"flex", alignItems:"center", justifyContent:"center", transition:"color .2s" }}>
+        {showLetter ? data.seq[pos] : ""}
       </div>
       {pos === 0 ? (
-        <div style={{ fontSize:13, color:t.muted, padding:"16px 0" }}>Remember this letter…</div>
-      ) : phase === "respond" && !feedback ? (
-        <div style={{ display:"flex", gap:16, justifyContent:"center", marginTop:8 }}>
-          {[{ l:"✓ Same", v:true, bg:t.success }, { l:"✗ Different", v:false, bg:t.error }].map(({ l, v, bg }) => (
-            <button key={String(v)} onClick={() => respond(v)}
-              style={{ flex:1, maxWidth:150, height:"clamp(48px,12vw,60px)", borderRadius:R.md, border:"none", background:bg, color:"#fff", fontSize:"clamp(14px,3.5vw,18px)", fontWeight:700, fontFamily:L.font, cursor:"pointer" }}>
+        <div style={{ fontSize:13, color:t.muted, padding:"12px 0" }}>Remember this letter…</div>
+      ) : canRespond ? (
+        <div style={{ display:"flex", gap:16, justifyContent:"center" }}>
+          {[{ l:"✓  Same", v:true }, { l:"✗  Different", v:false }].map(({ l, v }) => (
+            <button key={String(v)} onClick={() => respond(v)} style={{ flex:1, maxWidth:150, height:"clamp(52px,13vw,60px)", borderRadius:R.md, border:"none", background:v?t.success:t.error, color:"#fff", fontSize:"clamp(14px,3.5vw,17px)", fontWeight:700, fontFamily:L.font, cursor:"pointer" }}>
               {l}
             </button>
           ))}
         </div>
       ) : feedback ? (
-        <div style={{ fontSize:24, fontWeight:800, color:feedback==="✓"?t.success:t.error, marginTop:8 }}>{feedback}</div>
-      ) : null}
+        <div style={{ fontSize:28, fontWeight:900, color: feedback==="✓"?t.success:t.error }}>{feedback}</div>
+      ) : (
+        <div style={{ fontSize:13, color:t.muted, padding:"12px 0" }}>…</div>
+      )}
+      <div style={{ display:"flex", justifyContent:"center", gap:6, marginTop:16 }}>
+        {data.seq.map((_, i) => <div key={i} style={{ width:8, height:8, borderRadius:"50%", background: i<pos?t.success:i===pos?t.accent:t.border }} />)}
+      </div>
     </div>
   );
 }
-
+// ─── SENTENCE VERIFY TASK ────────────────────────────────────────────────────────
 function NavTask({ t, data, idx, total, onDone, tracker }) {
   const [openRoot, setOpenRoot] = useState(null);
   const [done, setDone] = useState(false);
