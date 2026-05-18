@@ -4932,25 +4932,127 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
               </div>
             ) : (
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 24 }}>
-                  <div style={{ width: 52, height: 52, borderRadius: 14, background: u.grad, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, fontWeight: L.fwBold, color: "#fff" }}>{sel.name.slice(0, 2).toUpperCase()}</div>
-                  <div><div style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: u.text }}>{sel.name}</div><div style={{ fontSize: L.fsSm, color: u.text3 }}>{sel.email}</div>
-                    <div style={{ display:"flex", gap:12, marginTop:4, flexWrap:"wrap" }}>
-                      {sel.createdAt && <span style={{ fontSize: L.fsXs, color: u.text3 }}>📅 Registered: {new Date(sel.createdAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })}</span>}
-                      {sel.completedAt && <span style={{ fontSize: L.fsXs, color: u.green }}>✓ Completed: {new Date(sel.completedAt).toLocaleString("en-GB", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit", hour12:true })}</span>}
+                {/* Header */}
+                <div style={{ display:"flex", alignItems:"center", gap:14, marginBottom:20 }}>
+                  <div style={{ width:52, height:52, borderRadius:14, background:u.grad, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18, fontWeight:L.fwBold, color:"#fff", flexShrink:0 }}>{sel.name.slice(0,2).toUpperCase()}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:u.text }}>{sel.name}</div>
+                    <div style={{ fontSize:L.fsSm, color:u.text3 }}>{sel.email}</div>
+                    <div style={{ display:"flex", gap:10, marginTop:4, flexWrap:"wrap" }}>
+                      {sel.orderGroup && <Badge u={u} color={u.accent}>{sel.orderGroup === "DL" ? "🌙→☀️ Dark First" : "☀️→🌙 Light First"}</Badge>}
+                      {sel.pref && sel.pref !== "none" && <Badge u={u} color={sel.pref==="dark"?u.accent2:u.gold}>Prefers {sel.pref}</Badge>}
+                      {sel.completed ? <Badge u={u} color={u.green}>✓ Completed</Badge> : <Badge u={u} color={u.orange}>In Progress</Badge>}
                     </div>
                   </div>
                 </div>
-                {(sel.experiments || []).map((sess, i) => {
-                  const allT2 = (sess.tasks || []).flatMap(t => t.trials || []);
-                  const ac = avg(allT2.map(t => t.acc || 0));
-                  const rts = allT2.filter(t => t.rt).map(t => t.rt);
-                  return (
-                    <Card key={i} u={u} style={{ marginBottom: 10, padding: L.spLg }}>
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", gap: 10 }}><Badge u={u} color={sess.theme === "dark" ? u.accent2 : u.gold}>{sess.theme}</Badge><span style={{ fontSize: L.fsSm, color: u.text2 }}>Phase {sess.phase}</span></div>
-                        <div style={{ display: "flex", gap: L.spLg }}><span style={{ fontSize: L.fsSm, color: u.text3 }}>Acc: <strong style={{ color: u.green }}>{fmtPct(ac)}</strong></span>{rts.length > 0 && <span style={{ fontSize: L.fsSm, color: u.text3 }}>RT: <strong style={{ color: u.teal }}>{fmtMs(avg(rts))}</strong></span>}</div>
+
+                {/* Dates */}
+                <Card u={u} style={{ padding:L.spMd, marginBottom:12 }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:8 }}>
+                    {[
+                      { l:"Registered",  v:sel.createdAt  ? new Date(sel.createdAt).toLocaleString("en-GB",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true}) : "—" },
+                      { l:"Completed",   v:sel.completedAt? new Date(sel.completedAt).toLocaleString("en-GB",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true}) : "—" },
+                      { l:"Order Group", v:sel.orderGroup||"—" },
+                      { l:"Preference",  v:sel.pref||"—" },
+                    ].map(({ l, v }) => (
+                      <div key={l} style={{ padding:"8px 12px", background:u.fill, borderRadius:R.md }}>
+                        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:2 }}>{l}</div>
+                        <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{v}</div>
                       </div>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Demographics */}
+                {sel.dem && Object.keys(sel.dem).length > 0 && (
+                  <Card u={u} style={{ padding:L.spMd, marginBottom:12 }}>
+                    <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, marginBottom:10 }}>Demographics</div>
+                    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
+                      {Object.entries(sel.dem).map(([k, v]) => (
+                        <div key={k} style={{ padding:"6px 10px", background:u.fill, borderRadius:R.md }}>
+                          <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:1, textTransform:"capitalize" }}>{k.replace(/([A-Z])/g," $1")}</div>
+                          <div style={{ fontSize:L.fsSm, color:u.text }}>{String(v)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Sessions */}
+                {(sel.experiments||[]).map((sess, si) => {
+                  const allT2 = (sess.tasks||[]).flatMap(t => t.trials||[]);
+                  const ac = avg(allT2.map(t => t.acc||0));
+                  const rts = allT2.filter(t=>t.rt).map(t=>t.rt);
+                  const nasa = sess.nasaTLX;
+                  return (
+                    <Card key={si} u={u} style={{ marginBottom:12, padding:L.spLg }}>
+                      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:12, flexWrap:"wrap", gap:8 }}>
+                        <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                          <Badge u={u} color={sess.theme==="dark"?u.accent2:u.gold}>{sess.theme==="dark"?"🌙 Dark":"☀️ Light"}</Badge>
+                          <span style={{ fontSize:L.fsSm, color:u.text2 }}>Phase {sess.phase || si+1}</span>
+                        </div>
+                        <div style={{ display:"flex", gap:L.spMd }}>
+                          <span style={{ fontSize:L.fsSm, color:u.text3 }}>Acc: <strong style={{ color:u.green }}>{fmtPct(ac)}</strong></span>
+                          {rts.length>0 && <span style={{ fontSize:L.fsSm, color:u.text3 }}>RT: <strong style={{ color:u.teal }}>{fmtMs(avg(rts))}</strong></span>}
+                          {allT2.length>0 && <span style={{ fontSize:L.fsSm, color:u.text3 }}>Trials: <strong style={{ color:u.text }}>{allT2.length}</strong></span>}
+                        </div>
+                      </div>
+
+                      {/* Per-task breakdown */}
+                      {(sess.tasks||[]).length > 0 && (
+                        <div className="tbl-wrap" style={{ marginBottom:nasa?12:0 }}>
+                          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:L.fsXs }}>
+                            <thead>
+                              <tr style={{ borderBottom:`1px solid ${u.border}` }}>
+                                {["Task","Trials","Accuracy","Avg RT","Errors"].map(h=>(
+                                  <th key={h} style={{ padding:"5px 8px", textAlign:"left", color:u.text3, fontWeight:L.fwSemi, whiteSpace:"nowrap" }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(sess.tasks||[]).map((task,ti) => {
+                                const tTrials = task.trials||[];
+                                const tAcc = avg(tTrials.map(t=>t.acc||0));
+                                const tRTs = tTrials.filter(t=>t.rt).map(t=>t.rt);
+                                const tErr = tTrials.reduce((s,t)=>s+(t.err||0),0);
+                                return (
+                                  <tr key={ti} style={{ borderBottom:`1px solid ${u.border}`, background:ti%2===0?u.fill:"transparent" }}>
+                                    <td style={{ padding:"6px 8px", color:u.text, fontWeight:L.fwSemi }}>{CFG.TL[task.type]||task.type}</td>
+                                    <td style={{ padding:"6px 8px", color:u.text3 }}>{tTrials.length}</td>
+                                    <td style={{ padding:"6px 8px", color:tAcc>=0.7?u.green:tAcc>=0.5?u.orange:u.red, fontWeight:L.fwBold, fontFamily:L.mono }}>{tTrials.length?fmtPct(tAcc):"—"}</td>
+                                    <td style={{ padding:"6px 8px", color:u.teal, fontFamily:L.mono }}>{tRTs.length?fmtMs(avg(tRTs)):"—"}</td>
+                                    <td style={{ padding:"6px 8px", color:u.text3, fontFamily:L.mono }}>{tErr}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* Comfort */}
+                      {sess.comfort && (
+                        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))", gap:6, marginBottom:nasa?10:0 }}>
+                          {[{l:"Visual Comfort",k:"visualComfort"},{l:"Eye Strain",k:"eyeStrain"},{l:"Fatigue",k:"fatigue"},{l:"Satisfaction",k:"satisfaction"}].map(({l,k})=>(
+                            <div key={k} style={{ padding:"6px 10px", background:u.fill, borderRadius:R.sm, textAlign:"center" }}>
+                              <div style={{ fontSize:10, color:u.text3, marginBottom:2 }}>{l}</div>
+                              <div style={{ fontSize:L.fsSm, fontWeight:L.fwBold, color:u.accent }}>{sess.comfort[k]||"—"}/7</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* NASA-TLX */}
+                      {nasa && (
+                        <div style={{ padding:"10px 12px", borderRadius:R.md, background:u.fill, border:`1px solid ${u.border}` }}>
+                          <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:6, fontWeight:L.fwSemi }}>NASA-TLX · Total: <span style={{ color:u.accent }}>{nasa.totalScore?.toFixed(1)}/20</span></div>
+                          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                            {[{k:"md",l:"Mental"},{k:"pd",l:"Physical"},{k:"td",l:"Temporal"},{k:"pe",l:"Performance"},{k:"ef",l:"Effort"},{k:"fr",l:"Frustration"}].map(({k,l})=>(
+                              <span key={k} style={{ fontSize:11, padding:"2px 8px", borderRadius:R.pill, background:u.bg, border:`1px solid ${u.border}`, color:u.text2 }}>{l}: <strong>{nasa[k]}</strong></span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </Card>
                   );
                 })}
