@@ -441,29 +441,33 @@ function computeAnalysis(users) {
   const { valid, issues } = cleanData(users);
   if (valid.length < 2) return { insufficient: true, n: valid.length, issues };
 
-  // Per-participant paired data {pid, dark: {...metrics}, light: {...metrics}}
+  // Per-participant paired data — use ONLY the first valid session per theme
   const pairs = valid.map(u => {
     const row = { pid: u.id, name: u.name, enc: u._enc };
     for (const theme of ["dark","light"]) {
-      const sess = (u.experiments||[]).filter(e => e.theme === theme);
-      const trials = sess.flatMap(s => (s.tasks||[]).flatMap(t => t.trials||[]));
-      const tlx = sess.find(s=>s.nasaTLX)?.nasaTLX || {};
-      const comfort = sess.find(s=>s.comfort)?.comfort || {};
+      // Take only the FIRST complete session for each theme
+      const sess = (u.experiments||[]).filter(e => e.theme === theme && (e.tasks||[]).length > 0);
+      if (!sess.length) { row[theme] = null; continue; }
+      const s0 = sess[0]; // first session only
+      const trials = (s0.tasks||[]).flatMap(t => t.trials||[]);
+      const tlx = s0.nasaTLX || {};
+      const comfort = s0.comfort || {};
       row[theme] = {
-        acc: stat.mean(trials.map(t=>t.acc??0)),
-        tt: stat.mean(trials.map(t=>t.tt??0)),
-        rt: stat.mean(trials.filter(t=>t.rt).map(t=>t.rt)),
-        err: stat.mean(trials.map(t=>t.err??0)),
-        clicks: stat.mean(trials.map(t=>t.cl??0)),
-        path: stat.mean(trials.map(t=>t.path??0)),
-        idle: stat.mean(trials.map(t=>t.idle??0)),
-        nasa: tlx.totalScore||null,
+        acc:    trials.length ? stat.mean(trials.map(t=>t.acc??0)) : null,
+        tt:     trials.length ? stat.mean(trials.map(t=>t.tt??0))  : null,
+        rt:     trials.filter(t=>t.rt).length ? stat.mean(trials.filter(t=>t.rt).map(t=>t.rt)) : null,
+        err:    trials.length ? stat.mean(trials.map(t=>t.err??0)) : null,
+        clicks: trials.length ? stat.mean(trials.map(t=>t.cl??0))  : null,
+        path:   trials.length ? stat.mean(trials.map(t=>t.path??0)): null,
+        idle:   trials.length ? stat.mean(trials.map(t=>t.idle??0)): null,
+        nasa:   tlx.totalScore||null,
         nasaMD: tlx.md||null, nasaPD: tlx.pd||null, nasaTD: tlx.td||null,
         nasaPE: tlx.pe||null, nasaEF: tlx.ef||null, nasFR: tlx.fr||null,
         vc: comfort.visualComfort||null,
         es: comfort.eyeStrain||null,
         fa: comfort.fatigue||null,
         sa: comfort.satisfaction||null,
+        sessionCount: sess.length, // flag duplicates
       };
     }
     return row;
@@ -1151,28 +1155,29 @@ function SessionTimeoutModal({ u, countdown, onStillHere, onLeave }) {
 function computeStats(user) {
   const exps = user.experiments || [];
   if (!exps.length) return null;
-  const all = exps.flatMap(e => (e.tasks || []).flatMap(t => (t.trials || []).map(tr => ({ ...tr, theme: e.theme, task: t.type }))));
+  // Use only the FIRST valid session per theme to avoid contamination from repeated sessions
+  const dkSess = exps.filter(e => e.theme === "dark"  && (e.tasks||[]).length > 0)[0];
+  const ltSess = exps.filter(e => e.theme === "light" && (e.tasks||[]).length > 0)[0];
+  const validSess = [dkSess, ltSess].filter(Boolean);
+  if (!validSess.length) return null;
+  const all = validSess.flatMap(e => (e.tasks || []).flatMap(t => (t.trials || []).map(tr => ({ ...tr, theme: e.theme, task: t.type }))));
   const dk = all.filter(t => t.theme === "dark"), lt = all.filter(t => t.theme === "light");
   const dkRTs = dk.filter(t => t.rt && t.rt > 50 && t.rt < 20000).map(t => t.rt);
   const ltRTs = lt.filter(t => t.rt && t.rt > 50 && t.rt < 20000).map(t => t.rt);
-  // Build byTask for every known task type (active or inactive) so lookups never throw
   const ALL_TASK_TYPES = Object.keys(CFG.TL);
   const byTask = Object.fromEntries(ALL_TASK_TYPES.map(tid => [tid, all.filter(t => t.task === tid)]));
   const tperf = Object.fromEntries(CFG.tasks.map(tid => [tid, { acc: avg(byTask[tid].map(t => t.acc || 0)), rt: avg(byTask[tid].filter(t => t.rt).map(t => t.rt)), n: byTask[tid].length }]));
   const accDk = avg(dk.map(t => t.acc || 0)), accLt = avg(lt.map(t => t.acc || 0));
-  const efDk = avg(exps.filter(e => e.theme === "dark").map(e => e.nasaTLX?.md || 0).filter(Boolean));
-  const efLt = avg(exps.filter(e => e.theme === "light").map(e => e.nasaTLX?.md || 0).filter(Boolean));
-
-  // Per-phase perceived comfort & fatigue (within-subjects comparison)
-  const comfortDk = { vc: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.visualComfort)||[0]), es: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.eyeStrain)||[0]), fa: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.fatigue)||[0]), sa: avg(exps.filter(e=>e.theme==="dark"&&e.comfort).map(e=>e.comfort.satisfaction)||[0]) };
-  const comfortLt = { vc: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.visualComfort)||[0]), es: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.eyeStrain)||[0]), fa: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.fatigue)||[0]), sa: avg(exps.filter(e=>e.theme==="light"&&e.comfort).map(e=>e.comfort.satisfaction)||[0]) };
+  const efDk  = dkSess?.nasaTLX?.md || 0;
+  const efLt  = ltSess?.nasaTLX?.md || 0;
+  const comfortOf = (sess) => sess?.comfort ? { vc: sess.comfort.visualComfort||0, es: sess.comfort.eyeStrain||0, fa: sess.comfort.fatigue||0, sa: sess.comfort.satisfaction||0 } : { vc:0, es:0, fa:0, sa:0 };
+  const comfortDk = comfortOf(dkSess);
+  const comfortLt = comfortOf(ltSess);
   const rtDk = dkRTs.length ? avg(dkRTs) : null, rtLt = ltRTs.length ? avg(ltRTs) : null;
-
-  // NASA-TLX per theme
-  const nasaDk = exps.filter(e => e.theme === "dark"  && e.nasaTLX).map(e => e.nasaTLX);
-  const nasaLt = exps.filter(e => e.theme === "light" && e.nasaTLX).map(e => e.nasaTLX);
-  const nasaTotalDk = nasaDk.length ? avg(nasaDk.map(n => n.totalScore)) : null;
-  const nasaTotalLt = nasaLt.length ? avg(nasaLt.map(n => n.totalScore)) : null;
+  const nasaDk = dkSess?.nasaTLX ? [dkSess.nasaTLX] : [];
+  const nasaLt = ltSess?.nasaTLX ? [ltSess.nasaTLX] : [];
+  const nasaTotalDk = nasaDk.length ? nasaDk[0].totalScore : null;
+  const nasaTotalLt = nasaLt.length ? nasaLt[0].totalScore : null;
   const errDk = avg(dk.map(t => t.err || 0));
   const errLt = avg(lt.map(t => t.err || 0));
 
@@ -4916,6 +4921,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <span style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text }}>{p.name}</span>
                             {p.isTestData && <span style={{ fontSize: L.fsXs, padding: "1px 6px", borderRadius: R.pill, background: `${u.teal}18`, color: u.teal, border: `1px solid ${u.teal}28` }}>test</span>}
+                            {(p.experiments||[]).length > 2 && <span style={{ fontSize: L.fsXs, padding: "1px 6px", borderRadius: R.pill, background: `${u.orange}18`, color: u.orange, border: `1px solid ${u.orange}28` }}>⚠ {(p.experiments||[]).length} sessions</span>}
                           </div>
                           <div style={{ fontSize: L.fsSm, color: u.text3 }}>{p.email}</div>
                           <div style={{ display: "flex", gap: 12, marginTop: 3, flexWrap: "wrap" }}>
