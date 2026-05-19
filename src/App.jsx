@@ -62,7 +62,7 @@ const R = { sm:8, md:12, lg:16, xl:20, pill:999 };
 const mkUI = (dark) => dark ? {
   bg:"#07090e", bg2:"#0c0f17", surface:"rgba(255,255,255,0.04)", surfaceSolid:"#111520",
   surface2:"rgba(255,255,255,0.07)", border:"rgba(255,255,255,0.07)", border2:"rgba(255,255,255,0.13)",
-  text:"#dde4f0", text2:"rgba(221,228,240,0.62)", text3:"rgba(221,228,240,0.36)",
+  text:"#dde4f0", text2:"rgba(221,228,240,0.80)", text3:"rgba(221,228,240,0.55)",
   accent:"#4f8ef7", accentFg:"#fff", accent2:"#8b5cf6",
   grad:"linear-gradient(135deg,#4f8ef7,#8b5cf6)",
   gradSoft:"linear-gradient(135deg,rgba(79,142,247,0.14),rgba(139,92,246,0.08))",
@@ -75,7 +75,7 @@ const mkUI = (dark) => dark ? {
 } : {
   bg:"#f5f7fc", bg2:"#eceff8", surface:"rgba(255,255,255,0.9)", surfaceSolid:"#ffffff",
   surface2:"#edf0f9", border:"rgba(0,0,0,0.07)", border2:"rgba(0,0,0,0.13)",
-  text:"#0d1117", text2:"rgba(13,17,23,0.60)", text3:"rgba(13,17,23,0.36)",
+  text:"#0d1117", text2:"rgba(13,17,23,0.75)", text3:"rgba(13,17,23,0.52)",
   accent:"#1a6ef5", accentFg:"#fff", accent2:"#7c3aed",
   grad:"linear-gradient(135deg,#1a6ef5,#7c3aed)",
   gradSoft:"linear-gradient(135deg,rgba(26,110,245,0.09),rgba(124,58,237,0.06))",
@@ -4738,12 +4738,17 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
   const refresh = () => setUsers(db.all().filter(x => x.role !== "admin"));
   const [delConfirm, setDelConfirm] = useState(null);
 
-  const deleteParticipant = (pid) => {
+  const deleteParticipant = async (pid) => {
+    // Remove from localStorage
     const all = db.all().filter(u => u.id !== pid);
     try { localStorage.setItem("hci_v5_users", JSON.stringify(all)); } catch {}
     setUsers(all.filter(u => u.role !== "admin"));
     setDelConfirm(null);
     if (sel?.id === pid) setSel(null);
+    // Remove from Supabase
+    if (supa) {
+      try { await supa.from("participants").delete().eq("id", pid); } catch {}
+    }
   };
 
   const exportCSV = () => {
