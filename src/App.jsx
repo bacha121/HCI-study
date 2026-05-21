@@ -3546,15 +3546,33 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
             </>
           ) : (
             <>
-              <div>
-                <div style={{ fontSize: L.fsXs, color: u.accent, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Start Session</div>
-                <h3 style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: u.text, margin: 0 }}>Dark vs Light Mode Experiment</h3>
-                <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 4 }}>8 tasks · 2 phases · ~20 min · Response time measured · One attempt only</p>
-              </div>
-              <div style={{ display: "flex", gap: L.spSm, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <Btn u={u} v="ghost" onClick={onTutorial}>📖 Tutorial</Btn>
-                <Btn u={u} v="grad" onClick={onStart}>Begin Experiment →</Btn>
-              </div>
+              {(() => {
+                const doneExps = (user.experiments||[]).filter(e=>(e.tasks||[]).length>0);
+                const isResume = doneExps.length === 1;
+                const doneTheme = doneExps[0]?.theme;
+                const pendTheme = doneTheme === "dark" ? "light" : "dark";
+                return (
+                  <>
+                    <div>
+                      <div style={{ fontSize: L.fsXs, color: u.accent, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>
+                        {isResume ? "Resume Session" : "Start Session"}
+                      </div>
+                      <h3 style={{ fontSize: L.fsLg, fontWeight: L.fwBold, color: u.text, margin: 0 }}>Dark vs Light Mode Experiment</h3>
+                      {isResume ? (
+                        <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 4 }}>
+                          Phase 1 ({doneTheme} mode) ✓ complete — Phase 2 ({pendTheme} mode) is pending.
+                        </p>
+                      ) : (
+                        <p style={{ color: u.text2, fontSize: L.fsSm, marginTop: 4 }}>8 tasks · 2 phases · ~20 min · Response time measured · One attempt only</p>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: L.spSm, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                      {!isResume && <Btn u={u} v="ghost" onClick={onTutorial}>📖 Tutorial</Btn>}
+                      <Btn u={u} v="grad" onClick={onStart}>{isResume ? `Continue Phase 2 (${pendTheme}) →` : "Begin Experiment →"}</Btn>
+                    </div>
+                  </>
+                );
+              })()}
             </>
           )}
         </div>
@@ -5339,9 +5357,25 @@ export default function App() {
 
   const startExp = () => {
     if (user.completed || (user.experiments || []).length >= 2) return; // one attempt only
-    // Systematic counterbalancing — alternate DL/LD based on completed participant count
-    const completed = db.all().filter(x => x.role !== "admin" && x.orderGroup).length;
-    const group = completed % 2 === 0 ? "DL" : "LD";
+
+    const doneExps = (user.experiments || []).filter(e => (e.tasks||[]).length > 0);
+
+    if (doneExps.length === 1) {
+      // One phase already done — resume with the pending theme
+      const doneTheme   = doneExps[0].theme;
+      const pendTheme   = doneTheme === "dark" ? "light" : "dark";
+      const p1 = user.orderGroup === "DL" ? "dark" : (user.orderGroup === "LD" ? "light" : doneTheme);
+      setP1Theme(p1);
+      setTaskOrder(shuf([...CFG.tasks]));
+      setPhase(2); // jump straight to phase 2
+      setTaskIdx(0); setTrialIdx(0); setTrialRes([]); setSessTasks([]);
+      setScreen("instructions");
+      return;
+    }
+
+    // Fresh start — assign counterbalanced group
+    const countRegistered = db.all().filter(x => x.role !== "admin" && x.orderGroup).length;
+    const group = countRegistered % 2 === 0 ? "DL" : "LD";
     const first = group === "DL" ? "dark" : "light";
     const upd = { ...user, orderGroup: group };
     setUser(upd); db.save(upd);
