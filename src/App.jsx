@@ -3401,13 +3401,6 @@ function AnalysisTab({ u, users }) {
   const sigCount  = Object.values(tests).filter(t => t?.sig).length;
   const margCount = Object.values(tests).filter(t => t?.marginal).length;
 
-  // Precompute summary for APA text (avoids inline IIFE)
-  const sigTests  = TEST_ROWS.filter(r => tests[r.k]?.sig);
-  const margTests = TEST_ROWS.filter(r => tests[r.k]?.marginal);
-  const accT = tests.acc, rtT = tests.rt, nasaT = tests.nasa;
-  const accD = desc.acc, rtD = desc.rt;
-  const pe   = resPracticeEffect;
-
   const fv = v => v == null || isNaN(v) ? "—" : Math.abs(v) >= 100 ? Math.round(v).toString() : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3);
   const dColor = d => d == null ? u.text3 : Math.abs(d) >= 0.8 ? u.red : Math.abs(d) >= 0.5 ? u.orange : Math.abs(d) >= 0.2 ? u.teal : u.text3;
   const thS = { padding:"7px 10px", fontSize:L.fsXs, color:u.text3, fontWeight:L.fwSemi, background:u.fill, borderBottom:`1px solid ${u.border}`, textAlign:"left", whiteSpace:"nowrap" };
@@ -3426,6 +3419,13 @@ function AnalysisTab({ u, users }) {
     { k:"fa",     l:"Fatigue",          unit:"/7",   higherBetter:false },
     { k:"sa",     l:"Satisfaction",     unit:"/7",   higherBetter:true  },
   ];
+
+  // Precompute for APA text and executive summary
+  const sigTests  = TEST_ROWS.filter(r => tests[r.k]?.sig);
+  const margTests = TEST_ROWS.filter(r => tests[r.k]?.marginal);
+  const accT = tests.acc, rtT = tests.rt, nasaT = tests.nasa;
+  const accD = desc.acc, rtD = desc.rt;
+  const pe   = resPracticeEffect;
 
   // ── Inline SVG chart helpers ──────────────────────────────────────────────────
   const BAR_H = 28, BAR_GAP = 8, CHART_W = 220;
