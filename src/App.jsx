@@ -496,13 +496,24 @@ function computeAnalysis(users) {
 
   const desc = Object.fromEntries(METRICS.map(m => [m.k, { dark: stat.describe(dk(m.k)), light: stat.describe(lt(m.k)) }]));
 
-  // Paired t-tests for key metrics
+  // Paired t-tests for key metrics — with Bonferroni correction
   const TEST_KEYS = ["acc","tt","rt","err","nasa","nasFR","nasaMD","vc","es","fa","sa"];
+  const N_TESTS = TEST_KEYS.length; // 11 simultaneous tests
+  const ALPHA_RAW = 0.05;
+  const ALPHA_BONF = ALPHA_RAW / N_TESTS; // 0.00455
+
   const tests = Object.fromEntries(TEST_KEYS.map(k => {
-    const a = pairs.map(p=>p.dark[k]).filter(v=>v!=null);
-    const b = pairs.map(p=>p.light[k]).filter(v=>v!=null);
     const paired = pairs.map(p=>[p.dark[k],p.light[k]]).filter(([a,b])=>a!=null&&b!=null);
-    return [k, stat.pairedT(paired.map(p=>p[0]), paired.map(p=>p[1]))];
+    if (paired.length < 2) return [k, null];
+    const result = stat.pairedT(paired.map(p=>p[0]), paired.map(p=>p[1]));
+    if (!result) return [k, null];
+    const p = result.p;
+    return [k, {
+      ...result,
+      sig:      p != null && p < ALPHA_BONF,        // Bonferroni-corrected significance
+      marginal: p != null && p >= ALPHA_BONF && p < ALPHA_RAW, // marginally significant
+      pBonf:    ALPHA_BONF,
+    }];
   }));
 
   // Per-task accuracy breakdown
@@ -3995,7 +4006,7 @@ function AnalysisTab({ u, users }) {
           <div className="tbl-wrap">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
-              <tr>{["Variable","🌙 Mean","☀️ Mean","Δ Mean","95% CI","t","df","p","d","Effect","JB Norm.","Result"].map(h => <th key={h} style={thS}>{h}</th>)}</tr>
+              <tr>{["Variable","🌙 Mean","☀️ Mean","Δ Mean","95% CI","t","df","p (raw)","p (Bonf.)","d","Effect","JB Norm.","Result"].map(h => <th key={h} style={thS}>{h}</th>)}</tr>
             </thead>
             <tbody>
               {TEST_ROWS.filter(r => res.tests[r.k]).map(({ k, l }) => {
@@ -4004,6 +4015,11 @@ function AnalysisTab({ u, users }) {
                 const dm = d.dark.mean, lm = d.light.mean;
                 const diff = dm != null && lm != null ? dm - lm : null;
                 const norm = t.normality;
+                const pAdj = t.p != null ? Math.min(1, t.p * 11) : null; // Bonferroni-adjusted p
+                const sigColor = t.sig ? u.green : t.marginal ? u.orange : u.text3;
+                const sigBg = t.sig ? `${u.green}18` : t.marginal ? `${u.orange}18` : u.fill;
+                const sigBorder = t.sig ? u.green : t.marginal ? u.orange : u.border;
+                const sigLabel = t.sig ? "★ Significant" : t.marginal ? "~ Marginal" : "Not Significant";
                 return (
                   <tr key={k}>
                     <td style={tdS(u.text)}>{l}</td>
@@ -4013,13 +4029,14 @@ function AnalysisTab({ u, users }) {
                     <td style={{ ...tdS(u.text3), fontFamily: L.mono, fontSize: L.fsXs }}>{t.ci95 ? `[${fv(t.ci95.lower)}, ${fv(t.ci95.upper)}]` : "—"}</td>
                     <td style={{ ...tdS(u.teal), fontFamily: L.mono }}>{t.t}</td>
                     <td style={{ ...tdS(u.text3), fontFamily: L.mono }}>{t.df}</td>
-                    <td style={{ ...tdS(t.p < 0.05 ? u.green : u.text2), fontFamily: L.mono }}>{t.p?.toFixed(4)}</td>
+                    <td style={{ ...tdS(t.p < 0.05 ? u.orange : u.text2), fontFamily: L.mono }}>{t.p?.toFixed(4)}</td>
+                    <td style={{ ...tdS(t.sig ? u.green : t.marginal ? u.orange : u.text2), fontFamily: L.mono, fontWeight: t.sig ? L.fwBold : 'normal' }}>{pAdj?.toFixed(4) ?? "—"}</td>
                     <td style={{ ...tdS(dColor(t.cohensD)), fontFamily: L.mono, fontWeight: L.fwSemi }}>{t.cohensD != null ? (t.cohensD > 0 ? "+" : "") + t.cohensD : "—"}</td>
                     <td style={tdS(dColor(t.cohensD))}>{t.cohenLabel}</td>
                     <td style={tdS(norm?.tested ? (norm.normal ? u.green : u.orange) : u.text3)}>{norm?.tested ? (norm.normal ? "✓ Normal" : `⚠ p=${norm.p}`) : norm?.note || "—"}</td>
                     <td>
-                      <span style={{ padding: "2px 8px", borderRadius: R.pill, fontSize: L.fsXs, fontWeight: L.fwBold, background: t.sig ? `${u.green}18` : u.fill, color: t.sig ? u.green : u.text3, border: `1px solid ${t.sig ? u.green : u.border}22` }}>
-                        {t.sig ? "Significant ★" : "Not Significant"}
+                      <span style={{ padding: "2px 8px", borderRadius: R.pill, fontSize: L.fsXs, fontWeight: L.fwBold, background: sigBg, color: sigColor, border: `1px solid ${sigBorder}28`, whiteSpace: "nowrap" }}>
+                        {sigLabel}
                       </span>
                       {sz.preliminary && <span style={{ marginLeft: 4, fontSize: L.fsXs, color: u.orange }}>†</span>}
                     </td>
@@ -4029,6 +4046,9 @@ function AnalysisTab({ u, users }) {
             </tbody>
           </table>
           {sz.preliminary && <div style={{ padding: `${L.spSm}px ${L.spLg}px`, fontSize: L.fsXs, color: u.orange, borderTop: `1px solid ${u.border}` }}>† Findings marked preliminary due to small sample (n={res.n}). Effect size (d) and CI width are more informative than p-values at this sample size.</div>}
+          <div style={{ padding: `${L.spSm}px ${L.spLg}px`, fontSize: L.fsXs, color: u.text3, borderTop: `1px solid ${u.border}`, lineHeight: 1.7 }}>
+            <strong style={{ color: u.text2 }}>Bonferroni Correction:</strong> {11} simultaneous tests · adjusted α = 0.05 ÷ 11 = <strong style={{ color: u.accent }}>0.0045</strong> · <span style={{ color: u.green }}>★ Significant</span> = p(Bonf.) &lt; 0.0045 · <span style={{ color: u.orange }}>~ Marginal</span> = 0.0045 ≤ p &lt; 0.05 · p(Bonf.) = raw p × 11, capped at 1.000
+          </div>
         </div>
       </Card>
 
@@ -4903,7 +4923,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: L.spMd }}>
               <Card u={u} style={{ padding: L.spLg }}>
                 <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Theme Comparison</div>
-                {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:String(Math.round(avg(dkT.map(t => t.err||0)))), li:String(Math.round(avg(ltT.map(t => t.err||0)))) }].map(({ l, d, li }) => (
+                {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:String(dkT.reduce((s,t)=>s+(t.err||0),0)), li:String(ltT.reduce((s,t)=>s+(t.err||0),0)) }].map(({ l, d, li }) => (
                   <div key={l} style={{ marginBottom: 10 }}>
                     <span style={{ fontSize: L.fsXs, color: u.text3, display:"block", marginBottom:4 }}>{l}</span>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 8 }}>
