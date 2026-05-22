@@ -1061,6 +1061,28 @@ const gen = {
 };
 
 // ─── EXPERIMENT ERROR BOUNDARY ───────────────────────────────────────────────────
+// Tab-level error boundary — catches crashes in any tab without killing the app
+class TabErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(e) { return { error: e }; }
+  componentDidCatch(e, info) { console.error('Tab crash:', e, info); }
+  render() {
+    if (this.state.error) {
+      const u = this.props.u;
+      return (
+        <div style={{ padding:24, fontFamily:"'DM Sans',system-ui,sans-serif" }}>
+          <div style={{ padding:20, borderRadius:12, background:`${u?.red||'#dc2626'}08`, border:`1px solid ${u?.red||'#dc2626'}22` }}>
+            <div style={{ fontSize:14, fontWeight:700, color:u?.red||'#dc2626', marginBottom:8 }}>⚠ This tab encountered an error</div>
+            <div style={{ fontSize:12, color:u?.text2||'#64748b', marginBottom:12, fontFamily:'monospace' }}>{this.state.error?.message}</div>
+            <button onClick={() => this.setState({ error:null })} style={{ padding:'6px 16px', borderRadius:8, border:'none', background:u?.accent||'#4d8ef0', color:'#fff', cursor:'pointer', fontSize:13, fontFamily:'inherit' }}>Retry</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 class ExperimentErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { error: null }; }
   static getDerivedStateFromError(e) { return { error: e }; }
@@ -1685,543 +1707,6 @@ function FlankerTask({ t, data, idx, total, onDone, tracker }) {
   );
 }
 
-function NBackTask({ t, data, idx: startIdx, total, onDone, tracker }) {
-  const [seqIdx, setSeqIdx] = useState(0);
-  const [showing, setShowing] = useState(false);
-  const [cur, setCur] = useState(null);
-  const [wait, setWait] = useState(false);
-  const [results, setResults] = useState([]);
-  const [fb, setFb] = useState(null);
-  const [ans, setAns] = useState(false);
-  const doneRef = useRef(false);
-  const sRef = useRef(null);
-  useEffect(() => { setSeqIdx(0); setResults([]); doneRef.current = false; tracker.start(); }, [data]);
-  useEffect(() => {
-    if (!data?.seq || seqIdx >= data.n || doneRef.current) return;
-    setWait(true);
-    const t1 = setTimeout(() => {
-      setCur(data.seq[seqIdx]); setShowing(true); setFb(null); setAns(false); setWait(false);
-      sRef.current = Date.now(); tracker.setOnset();
-      const t2 = setTimeout(() => {
-        setShowing(false);
-        const t3 = setTimeout(() => {
-          const ni = seqIdx + 1;
-          if (ni >= data.n && !doneRef.current) {
-            doneRef.current = true;
-            setResults(r => {
-              const m = tracker.stop();
-              const okCount = r.filter(x => x.ok).length;
-              setTimeout(() => onDone({ i: startIdx, rt: avg(r.map(x => x.rt).filter(Boolean)), acc: okCount / Math.max(r.length, 1), err: r.filter(x => !x.ok).length, ...m }), 80);
-              return r;
-            });
-          } else setSeqIdx(ni);
-        }, 550);
-        return () => clearTimeout(t3);
-      }, 1100);
-      return () => clearTimeout(t2);
-    }, 450);
-    return () => clearTimeout(t1);
-  }, [data, seqIdx]);
-  const respond = isMatch => {
-    if (ans || wait || !showing || seqIdx < 2) return;
-    const rt = Date.now() - sRef.current;
-    const actual = data.seq[seqIdx] === data.seq[seqIdx - 2];
-    const ok = isMatch === actual; tracker.click(ok); setAns(true); setFb(ok);
-    setResults(r => [...r, { ok, rt }]);
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ textAlign: "center", fontFamily: L.font }}>
-      <TrialHdr t={t} type="n_back" idx={Math.max(0, seqIdx - 1)} total={data.n} />
-      <div style={{ height: 5, background: t.border, borderRadius: 3, marginBottom: L.spLg, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${(seqIdx / data.n) * 100}%`, background: t.accent, transition: "width .3s" }} />
-      </div>
-      <div style={{ width: 130, height: 130, borderRadius: 24, margin: "0 auto 28px", display: "flex", alignItems: "center", justifyContent: "center", background: showing ? t.selected : t.surface, border: `2px solid ${showing ? t.selectedBdr : t.border}`, fontSize: 60, fontWeight: L.fwBold, color: showing ? t.accent : t.textFaint, transition: "all .2s", fontFamily: L.mono }}>
-        {showing ? cur : "·"}
-      </div>
-      {seqIdx >= 2 ? (
-        <div style={{ display: "flex", gap: L.spLg, justifyContent: "center" }}>
-          {[{ l: "Match", m: true }, { l: "No Match", m: false }].map(({ l, m }) => (
-            <button key={l} onClick={() => respond(m)} disabled={ans || wait || !showing}
-              style={{ height: L.btnH, minWidth: 125, borderRadius: R.md, border: "none", background: t.accent, color: t.accentFg, fontSize: L.fsMd, fontWeight: L.fwSemi, fontFamily: L.font, cursor: ans || wait || !showing ? "not-allowed" : "pointer", opacity: ans || wait || !showing ? .4 : 1 }}>
-              {l}
-            </button>
-          ))}
-        </div>
-      ) : <p style={{ fontSize: L.fsSm, color: t.textFaint }}>Building sequence…</p>}
-      {fb !== null && <p style={{ marginTop: L.spMd, fontSize: L.fsSm, color: fb ? t.success : t.error, fontWeight: L.fwSemi }}>{fb ? "✓ Correct" : "✗ Incorrect"}</p>}
-    </div>
-  );
-}
-
-function StroopTask({ t, data, idx, total, onDone, tracker }) {
-  const [ph, setPh] = useState("fix");
-  const [done, setDone] = useState(false);
-  const [fb, setFb] = useState(null);
-  const [lastRT, setLastRT] = useState(null);
-  useEffect(() => {
-    setPh("fix"); setDone(false); setFb(null); setLastRT(null); tracker.start();
-    const t1 = setTimeout(() => { setPh("stim"); tracker.setOnset(); }, 600);
-    return () => clearTimeout(t1);
-  }, [data]);
-  const choose = opt => {
-    if (done) return; const rt = tracker.recordRT(); setLastRT(rt);
-    const ok = opt.name === data.ink.name; tracker.click(ok); setDone(true); setFb(ok);
-    setTimeout(() => { const m = tracker.stop(); onDone({ i: idx, rt, acc: ok ? 1 : 0, err: ok ? 0 : 1, cong: data.cong, ...m }); }, 700);
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ textAlign: "center", fontFamily: L.font }}>
-      <TrialHdr t={t} type="stroop" idx={idx} total={total} rt={lastRT} />
-      <p style={{ fontSize: L.fsSm, color: t.textFaint, marginBottom: L.spMd }}>Click the <strong style={{ color: t.text }}>colour of the ink</strong> — {data.cong ? "Congruent" : "Incongruent"}</p>
-      <div style={{ height: 130, display: "flex", alignItems: "center", justifyContent: "center", background: t.surface, border: `1px solid ${t.border}`, borderRadius: R.lg, marginBottom: L.spLg }}>
-        {ph === "fix" ? <span style={{ fontSize: 42, color: t.textFaint }}>+</span> : <span style={{ fontSize: 56, fontWeight: L.fwBlack, fontFamily: L.font, color: data.ink.css, letterSpacing: 2 }}>{data.word}</span>}
-      </div>
-      {ph === "stim" && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: L.spMd, maxWidth: 440, margin: "0 auto" }}>
-          {data.opts.map(opt => (
-            <button key={opt.name} onClick={() => choose(opt)} disabled={done}
-              style={{ height: 56, borderRadius: R.md, border: `2px solid ${done && opt.name === data.ink.name ? t.success : t.border}`, background: done && opt.name === data.ink.name ? t.successBg : t.surface, cursor: done ? "default" : "pointer", transition: "all .15s", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }}>
-              <div style={{ width: 22, height: 22, borderRadius: "50%", background: opt.css }} />
-              <span style={{ fontSize: L.fsXs, color: t.textMuted, fontFamily: L.font }}>{opt.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      {fb !== null && <p style={{ marginTop: L.spMd, fontSize: L.fsSm, color: fb ? t.success : t.error, fontWeight: L.fwSemi }}>{fb ? "✓ Correct" : "✗ Incorrect"}</p>}
-    </div>
-  );
-}
-
-function ComparisonTask({ t, data, idx, total, onDone, tracker }) {
-  const [rows, setRows] = useState(() => data.rows.map(r => ({ ...r, sel: false })));
-  useEffect(() => { setRows(data.rows.map(r => ({ ...r, sel: false }))); tracker.start(); setTimeout(() => tracker.setOnset(), 60); }, [data]);
-  const toggle = id => { const row = rows.find(r => r.id === id); tracker.click(row?.ok ?? false); setRows(p => p.map(r => r.id === id ? { ...r, sel: !r.sel } : r)); };
-  const submit = () => {
-    const m = tracker.stop(); const sel = rows.filter(r => r.sel);
-    const ok = sel.filter(r => r.ok).length, fp = sel.filter(r => !r.ok).length, miss = rows.filter(r => r.ok && !r.sel).length, tot = data.okRows.length;
-    onDone({ i: idx, acc: ok / tot, err: fp + miss, ...m });
-  };
-  return (
-    <div onMouseMove={tracker.onMove}>
-      <TrialHdr t={t} type="comparison" idx={idx} total={total} />
-      <div style={{ padding: `${L.spSm}px ${L.spMd}px`, background: t.surface, border: `1px solid ${t.border}`, borderRadius: R.md, marginBottom: L.spMd, fontFamily: L.font, fontSize: L.fsSm, color: t.textMuted }}>
-        Select rows where <strong style={{ color: t.text }}>A − B &gt; {data.thr}</strong>
-      </div>
-      <div style={{ border: `1px solid ${t.border}`, borderRadius: R.md, overflow: "hidden", marginBottom: L.spMd }}>
-        <div style={{ display: "grid", gridTemplateColumns: "32px 1fr 1fr 28px", background: t.surface2, borderBottom: `1px solid ${t.border}`, padding: `${L.spSm}px ${L.spMd}px` }}>
-          {["#","Col A","Col B","✓"].map((h, i) => <span key={i} style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: t.textMuted, textAlign: "center", fontFamily: L.font }}>{h}</span>)}
-        </div>
-        {rows.map((row, i) => (
-          <div key={row.id} onClick={() => toggle(row.id)} style={{ display: "grid", gridTemplateColumns: "32px 1fr 1fr 28px", padding: `${L.spMd}px`, background: row.sel ? t.selected : i % 2 === 0 ? t.bg : t.rowAlt, border: `1px solid ${row.sel ? t.selectedBdr : "transparent"}`, borderBottom: `1px solid ${t.border}`, cursor: "pointer", transition: "background .1s" }}>
-            <span style={{ fontSize: L.fsSm, color: t.textFaint, textAlign: "center", alignSelf: "center" }}>{i + 1}</span>
-            <span style={{ fontSize: L.fsBase, color: t.text, fontFamily: L.mono, textAlign: "center", alignSelf: "center" }}>{row.a}</span>
-            <span style={{ fontSize: L.fsBase, color: t.text, fontFamily: L.mono, textAlign: "center", alignSelf: "center" }}>{row.b}</span>
-            <span style={{ textAlign: "center", alignSelf: "center", color: row.sel ? t.accent : t.border, fontSize: 14 }}>{row.sel ? "●" : "○"}</span>
-          </div>
-        ))}
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <button onClick={submit} style={{ ...eBtn(t), height: L.btnH, padding: "0 28px", fontSize: L.fsBase, fontWeight: L.fwSemi }}>
-          Submit ({rows.filter(r => r.sel).length} selected)
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function SelectionTask({ t, data, idx, total, onDone, tracker }) {
-  const [items, setItems] = useState(() => data.items.map(i => ({ ...i, sel: false })));
-  useEffect(() => { setItems(data.items.map(i => ({ ...i, sel: false }))); tracker.start(); setTimeout(() => tracker.setOnset(), 60); }, [data]);
-  const toggle = id => { const item = items.find(i => i.id === id); tracker.click(item?.cat === data.tc); setItems(p => p.map(i => i.id === id ? { ...i, sel: !i.sel } : i)); };
-  const submit = () => {
-    const m = tracker.stop(); const sel = items.filter(i => i.sel);
-    const ok = sel.filter(i => i.cat === data.tc).length, fp = sel.filter(i => i.cat !== data.tc).length;
-    const tot = items.filter(i => i.cat === data.tc).length, miss = tot - ok;
-    onDone({ i: idx, acc: ok / tot, err: fp + miss, ...m });
-  };
-  return (
-    <div onMouseMove={tracker.onMove}>
-      <TrialHdr t={t} type="selection" idx={idx} total={total} />
-      <div style={{ padding: `${L.spSm}px ${L.spMd}px`, background: t.surface, border: `1px solid ${t.border}`, borderRadius: R.md, marginBottom: L.spMd, fontFamily: L.font, fontSize: L.fsSm, color: t.textMuted }}>
-        Select all: <strong style={{ color: t.accent }}>{data.crit}</strong>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: L.spSm, marginBottom: L.spMd }}>
-        {items.map(item => (
-          <button key={item.id} onClick={() => toggle(item.id)} style={{ padding: L.spMd, borderRadius: R.md, border: `1px solid ${item.sel ? t.selectedBdr : t.border}`, background: item.sel ? t.selected : t.surface, cursor: "pointer", textAlign: "left", transition: "all .1s", fontFamily: L.font }}>
-            <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: t.text, marginBottom: 3 }}>{item.name}</div>
-            <div style={{ fontSize: L.fsXs, color: t.textMuted }}>{item.cat}</div>
-            <div style={{ fontSize: L.fsXs, color: t.textFaint, marginTop: 3 }}>${item.price}</div>
-          </button>
-        ))}
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <button onClick={submit} style={{ ...eBtn(t), height: L.btnH, padding: "0 28px", fontSize: L.fsBase, fontWeight: L.fwSemi }}>
-          Submit ({items.filter(i => i.sel).length} selected)
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function MemoryTask({ t, data, idx, total, onDone, tracker }) {
-  const [ph, setPh] = useState("mem");
-  const [tl, setTl] = useState(CFG.memMs);
-  const [items, setItems] = useState(() => data.items.map(i => ({ ...i })));
-  useEffect(() => {
-    setPh("mem"); setTl(CFG.memMs); setItems(data.items.map(i => ({ ...i }))); tracker.start();
-    const s = Date.now();
-    const iv = setInterval(() => {
-      const left = CFG.memMs - (Date.now() - s);
-      if (left <= 0) { setTl(0); setPh("recall"); tracker.setOnset(); clearInterval(iv); }
-      else setTl(left);
-    }, 50);
-    return () => clearInterval(iv);
-  }, [data]);
-  const toggle = id => { const item = items.find(i => i.id === id); tracker.click(item?.ok ?? false); setItems(p => p.map(i => i.id === id ? { ...i, sel: !i.sel } : i)); };
-  const submit = () => {
-    const m = tracker.stop(); const sel = items.filter(i => i.sel);
-    const ok = sel.filter(i => i.ok).length, fp = sel.filter(i => !i.ok).length, tot = data.tgts.length, miss = tot - ok;
-    onDone({ i: idx, acc: ok / tot, err: fp + miss, ...m });
-  };
-  if (ph === "mem") return (
-    <div style={{ fontFamily: L.font }}>
-      <TrialHdr t={t} type="memory_recall" idx={idx} total={total} />
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: L.spMd, fontSize: L.fsSm, color: t.textMuted }}>
-        <span>Memorise these words</span>
-        <strong style={{ color: t.accent }}>{(tl / 1000).toFixed(1)}s</strong>
-      </div>
-      <div style={{ height: 4, background: t.border, borderRadius: 2, marginBottom: L.spLg, overflow: "hidden" }}>
-        <div style={{ height: "100%", width: `${(tl / CFG.memMs) * 100}%`, background: t.accent, transition: "width .1s" }} />
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: L.spMd }}>
-        {data.tgts.map((w, i) => <div key={i} style={{ padding: L.spMd, background: t.surface, border: `1px solid ${t.border}`, borderRadius: R.md, fontSize: L.fsMd, fontWeight: L.fwSemi, color: t.text, textAlign: "center" }}>{w}</div>)}
-      </div>
-    </div>
-  );
-  return (
-    <div onMouseMove={tracker.onMove} style={{ fontFamily: L.font }}>
-      <TrialHdr t={t} type="memory_recall" idx={idx} total={total} />
-      <p style={{ fontSize: L.fsSm, color: t.textMuted, marginBottom: L.spMd, textAlign: "center" }}>Select the words you saw</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: L.spSm, marginBottom: L.spMd }}>
-        {items.map(item => <button key={item.id} onClick={() => toggle(item.id)} style={{ padding: L.spMd, borderRadius: R.md, border: `1px solid ${item.sel ? t.selectedBdr : t.border}`, background: item.sel ? t.selected : t.surface, color: t.text, fontSize: L.fsBase, fontFamily: L.font, cursor: "pointer", transition: "all .1s" }}>{item.w}</button>)}
-      </div>
-      <div style={{ textAlign: "center" }}>
-        <button onClick={submit} style={{ ...eBtn(t), height: L.btnH, padding: "0 28px", fontSize: L.fsBase, fontWeight: L.fwSemi }}>Submit Recall</button>
-      </div>
-    </div>
-  );
-}
-
-function ArithmeticTask({ t, data, idx, total, onDone, tracker }) {
-  const [ph, setPh] = useState("fix");
-  const [done, setDone] = useState(false);
-  const [fb, setFb] = useState(null);
-  const [lastRT, setLastRT] = useState(null);
-  useEffect(() => {
-    setPh("fix"); setDone(false); setFb(null); setLastRT(null); tracker.start();
-    const t1 = setTimeout(() => { setPh("prob"); tracker.setOnset(); }, 500);
-    return () => clearTimeout(t1);
-  }, [data]);
-  const choose = opt => {
-    if (done) return; const rt = tracker.recordRT(); setLastRT(rt);
-    tracker.click(opt.ok); setDone(true); setFb(opt.ok);
-    setTimeout(() => { const m = tracker.stop(); onDone({ i: idx, rt, acc: opt.ok ? 1 : 0, err: opt.ok ? 0 : 1, ...m }); }, 680);
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ textAlign: "center", fontFamily: L.font }}>
-      <TrialHdr t={t} type="arithmetic" idx={idx} total={total} rt={lastRT} />
-      <div style={{ height: 120, display: "flex", alignItems: "center", justifyContent: "center", background: t.surface, border: `1px solid ${t.border}`, borderRadius: R.lg, marginBottom: L.spLg }}>
-        {ph === "fix" ? <span style={{ fontSize: 40, color: t.textFaint }}>+</span> : <span style={{ fontSize: 32, fontWeight: L.fwBold, fontFamily: L.mono, color: t.text }}>{data.prob}</span>}
-      </div>
-      {ph === "prob" && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: L.spMd, maxWidth: 340, margin: "0 auto" }}>
-          {data.opts.map(opt => (
-            <button key={opt.id} onClick={() => choose(opt)} disabled={done}
-              style={{ height: 56, borderRadius: R.md, border: `1px solid ${done && opt.ok ? t.success : t.border}`, background: done && opt.ok ? t.successBg : t.surface, color: done && opt.ok ? t.success : t.text, fontSize: L.fsLg, fontWeight: L.fwBold, fontFamily: L.mono, cursor: done ? "default" : "pointer", transition: "all .15s" }}>
-              {opt.v}
-            </button>
-          ))}
-        </div>
-      )}
-      {fb !== null && <p style={{ marginTop: L.spMd, fontSize: L.fsSm, color: fb ? t.success : t.error, fontWeight: L.fwSemi }}>{fb ? "✓ Correct" : "✗ Incorrect"}</p>}
-    </div>
-  );
-}
-
-function PatternTask({ t, data, idx, total, onDone, tracker }) {
-  const [done, setDone] = useState(false);
-  const [fb, setFb] = useState(null);
-  const [lastRT, setLastRT] = useState(null);
-  useEffect(() => { setDone(false); setFb(null); setLastRT(null); tracker.start(); setTimeout(() => tracker.setOnset(), 80); }, [data]);
-  const choose = opt => {
-    if (done) return; const rt = tracker.recordRT(); setLastRT(rt);
-    tracker.click(opt.ok); setDone(true); setFb(opt.ok);
-    setTimeout(() => { const m = tracker.stop(); onDone({ i: idx, rt, acc: opt.ok ? 1 : 0, err: opt.ok ? 0 : 1, ...m }); }, 680);
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ fontFamily: L.font }}>
-      <TrialHdr t={t} type="pattern" idx={idx} total={total} rt={lastRT} />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: L.spMd, padding: L.spLg, background: t.surface, border: `1px solid ${t.border}`, borderRadius: R.lg, marginBottom: L.spLg }}>
-        {data.seq.map((v, i) => <div key={i} style={{ width: 60, height: 60, borderRadius: R.md, background: t.bg, border: `1px solid ${t.border}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: L.fsLg, fontWeight: L.fwBold, fontFamily: L.mono, color: t.text }}>{v}</div>)}
-        <span style={{ fontSize: 22, color: t.textFaint }}>→</span>
-        <div style={{ width: 60, height: 60, borderRadius: R.md, background: t.selected, border: `2px dashed ${t.selectedBdr}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: t.accent }}>?</div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: L.spMd }}>
-        {data.opts.map(opt => (
-          <button key={opt.id} onClick={() => choose(opt)} disabled={done}
-            style={{ height: 56, borderRadius: R.md, border: `1px solid ${done && opt.ok ? t.success : t.border}`, background: done && opt.ok ? t.successBg : t.surface, color: done && opt.ok ? t.success : t.text, fontSize: L.fsMd, fontWeight: L.fwBold, fontFamily: L.mono, cursor: done ? "default" : "pointer", transition: "all .15s" }}>
-            {opt.v}
-          </button>
-        ))}
-      </div>
-      {fb !== null && <p style={{ textAlign: "center", marginTop: L.spMd, fontSize: L.fsSm, color: fb ? t.success : t.error, fontWeight: L.fwSemi }}>{fb ? "✓ Correct" : "✗ Incorrect"}</p>}
-    </div>
-  );
-}
-
-function TrailTask({ t, data, idx, total, onDone, tracker }) {
-  const [nodes, setNodes] = useState(() => data.nodes.map(n => ({ ...n })));
-  const [next, setNext] = useState(1);
-  const [errs, setErrs] = useState(0);
-  useEffect(() => { setNodes(data.nodes.map(n => ({ ...n }))); setNext(1); setErrs(0); tracker.start(); setTimeout(() => tracker.setOnset(), 80); }, [data]);
-  const tap = nodeId => {
-    const ok = nodeId === next; tracker.click(ok);
-    if (!ok) { setErrs(e => e + 1); return; }
-    setNodes(p => p.map(n => n.id === nodeId ? { ...n, done: true } : n));
-    const newNext = next + 1; setNext(newNext);
-    if (newNext > data.n) { const m = tracker.stop(); onDone({ i: idx, acc: errs === 0 ? 1 : Math.max(0, 1 - errs / data.n), err: errs, ...m }); }
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ fontFamily: L.font }}>
-      <TrialHdr t={t} type="trail" idx={idx} total={total} />
-      <p style={{ fontSize: L.fsSm, color: t.textMuted, marginBottom: L.spMd, textAlign: "center" }}>
-        Click the numbered circles in ascending order: <strong style={{ color: t.accent }}>1 → 2 → … → {data.n}</strong>
-      </p>
-      <div style={{ position: "relative", width: "100%", paddingBottom: "58%", background: t.surface, border: `1px solid ${t.border}`, borderRadius: R.lg, overflow: "hidden", marginBottom: L.spMd }}>
-        {nodes.map(node => (
-          <button key={node.id} onClick={() => !node.done && tap(node.id)}
-            style={{
-              position: "absolute", left: `${node.x}%`, top: `${node.y}%`,
-              transform: "translate(-50%,-50%)", width: 44, height: 44, borderRadius: "50%",
-              // Done nodes: success colour. All remaining nodes look identical — no hint which is next.
-              border: `2px solid ${node.done ? t.success : t.border}`,
-              background: node.done ? t.successBg : t.surface,
-              color: node.done ? t.success : t.text,
-              fontFamily: L.mono, fontSize: L.fsSm, fontWeight: L.fwBold,
-              cursor: node.done ? "default" : "pointer", transition: "all .15s",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-            {node.done ? "✓" : node.id}
-          </button>
-        ))}
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: L.fsSm, color: t.textFaint, padding: `0 ${L.spSm}px` }}>
-        <span>Progress: {next - 1}/{data.n}</span>
-        <span>Errors: <strong style={{ color: errs > 0 ? t.error : t.textFaint }}>{errs}</strong></span>
-      </div>
-    </div>
-  );
-}
-
-// ─── EMAIL SELECTION TASK ──────────────────────────────────────────────────────────
-function EmailSelTask({ t, data, idx, total, onDone, tracker }) {
-  const [emails, setEmails] = useState(() => data.emails.map(e => ({ ...e })));
-  useEffect(() => { setEmails(data.emails.map(e => ({ ...e }))); tracker.start(); setTimeout(() => tracker.setOnset(), 60); }, [data]);
-  const toggle = id => {
-    const e = emails.find(e => e.id === id);
-    tracker.click(data.correctIds.includes(id) ? !e.sel : false);
-    setEmails(p => p.map(e => e.id === id ? { ...e, sel: !e.sel } : e));
-  };
-  const submit = () => {
-    const m = tracker.stop();
-    const sel = emails.filter(e => e.sel).map(e => e.id);
-    const ok = sel.filter(id => data.correctIds.includes(id)).length;
-    const fp = sel.filter(id => !data.correctIds.includes(id)).length;
-    const miss = data.correctIds.filter(id => !sel.includes(id)).length;
-    onDone({ i:idx, acc:ok/Math.max(data.correctIds.length,1), err:fp+miss, ...m });
-  };
-  const TAG = { urgent:{ c:t.error, bg:t.errorBg }, normal:{ c:t.textMuted, bg:t.surface }, spam:{ c:t.textFaint, bg:t.surface } };
-  return (
-    <div onMouseMove={tracker.onMove}>
-      <TrialHdr t={t} type="email_sel" idx={idx} total={total} />
-      <div style={{ padding:`${L.spSm}px ${L.spMd}px`, background:t.surface, border:`1px solid ${t.border}`, borderRadius:R.md, marginBottom:L.spMd, fontFamily:L.font, fontSize:L.fsSm, color:t.textMuted }}>
-        Task: <strong style={{ color:t.text }}>{data.crit}</strong>
-      </div>
-      <div style={{ border:`1px solid ${t.border}`, borderRadius:R.md, overflow:"hidden", marginBottom:L.spMd }}>
-        {emails.map((email, i) => (
-          <div key={email.id} onClick={() => toggle(email.id)} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:`${L.spMd}px`, background:email.sel?t.selected:i%2===0?t.bg:t.rowAlt, border:`1px solid ${email.sel?t.selectedBdr:"transparent"}`, borderBottom:`1px solid ${t.border}`, cursor:"pointer", transition:"background .1s" }}>
-            <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${email.sel?t.accent:t.border}`, background:email.sel?t.accent:"transparent", flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              {email.sel && <span style={{ color:"#fff", fontSize:11, fontWeight:700 }}>✓</span>}
-            </div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:L.spSm, marginBottom:3 }}>
-                <span style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:t.text }}>{email.from}</span>
-                <span style={{ fontSize:L.fsXs, padding:"2px 8px", borderRadius:R.pill, background:TAG[email.tag].bg, color:TAG[email.tag].c, border:`1px solid ${TAG[email.tag].c}30`, fontWeight:L.fwBold, textTransform:"uppercase", letterSpacing:.6 }}>{email.tag}</span>
-              </div>
-              <div style={{ fontSize:L.fsSm, color:t.textMuted, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{email.subject}</div>
-            </div>
-            <div style={{ fontSize:L.fsXs, color:t.textFaint, flexShrink:0 }}>{email.time}</div>
-          </div>
-        ))}
-      </div>
-      <div style={{ textAlign:"center" }}>
-        <button onClick={submit} style={{ ...eBtn(t), height:L.btnH, padding:"0 28px", fontSize:L.fsBase, fontWeight:L.fwSemi }}>Submit ({emails.filter(e=>e.sel).length} selected)</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── DATA COMPARISON TASK ─────────────────────────────────────────────────────────
-function DataCompTask({ t, data, idx, total, onDone, tracker }) {
-  const [chosen, setChosen] = useState(null);
-  const [done, setDone] = useState(false);
-  useEffect(() => { setChosen(null); setDone(false); tracker.start(); setTimeout(() => tracker.setOnset(), 60); }, [data]);
-  const choose = side => {
-    if (done) return;
-    const rt = tracker.recordRT();
-    tracker.click(side === data.correct);
-    setChosen(side); setDone(true);
-    setTimeout(() => { const m = tracker.stop(); onDone({ i:idx, rt, acc:side===data.correct?1:0, err:side===data.correct?0:1, ...m }); }, 750);
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ fontFamily:L.font }}>
-      <TrialHdr t={t} type="data_comp" idx={idx} total={total} />
-      <div style={{ textAlign:"center", padding:`${L.spSm}px ${L.spMd}px`, background:t.surface, border:`1px solid ${t.border}`, borderRadius:R.md, marginBottom:L.spMd, fontSize:L.fsSm, color:t.textMuted }}>
-        <strong style={{ color:t.text }}>{data.question}</strong>
-      </div>
-      <div style={{ display:"flex", gap:L.spMd, marginBottom:L.spMd }}>
-        {["a","b"].map(side => {
-          const card = data[side];
-          const isChosen = chosen === side;
-          const isCorrect = side === data.correct;
-          const bdr = done && isCorrect ? t.success : done && isChosen && !isCorrect ? t.error : isChosen ? t.selectedBdr : t.border;
-          const bg  = done && isCorrect ? t.successBg : isChosen ? t.selected : t.surface;
-          return (
-            <div key={side} onClick={() => choose(side)} style={{ flex:1, padding:L.spLg, borderRadius:R.lg, border:`2px solid ${bdr}`, background:bg, cursor:done?"default":"pointer", transition:"all .15s", textAlign:"center" }}>
-              <div style={{ fontSize:L.fsXs, color:t.textFaint, letterSpacing:1.5, textTransform:"uppercase", marginBottom:L.spSm }}>{side === "a" ? "Option A" : "Option B"}</div>
-              <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:t.text, marginBottom:L.spSm }}>{card.company}</div>
-              <div style={{ fontSize:L.fsXs, color:t.textMuted, marginBottom:L.spMd, textTransform:"uppercase", letterSpacing:.5 }}>{card.metric}</div>
-              <div style={{ fontSize:34, fontWeight:L.fwBlack, color:done&&isCorrect?t.success:t.accent, fontFamily:L.mono }}>{card.display}</div>
-            </div>
-          );
-        })}
-      </div>
-      {done && <p style={{ textAlign:"center", fontSize:L.fsSm, color:chosen===data.correct?t.success:t.error, fontWeight:L.fwSemi }}>{chosen===data.correct?"✓ Correct":"✗ Incorrect"}</p>}
-    </div>
-  );
-}
-
-// ─── FORM FILLING TASK ────────────────────────────────────────────────────────────
-function FormFillTask({ t, data, idx, total, onDone, tracker }) {
-  const [vals, setVals] = useState(() => Object.fromEntries(data.fields.map(f => [f.k, ""])));
-  const [submitted, setSubmitted] = useState(false);
-  const [fieldRes, setFieldRes] = useState(null);
-  useEffect(() => { setVals(Object.fromEntries(data.fields.map(f => [f.k, ""]))); setSubmitted(false); setFieldRes(null); tracker.start(); setTimeout(() => tracker.setOnset(), 100); }, [data]);
-  const ready = data.fields.every(f => vals[f.k].trim());
-  const submit = () => {
-    const m = tracker.stop();
-    const res = data.fields.map(f => ({ k:f.k, ok: data.src[f.k].trim().toLowerCase() === vals[f.k].trim().toLowerCase() }));
-    const ok = res.filter(r => r.ok).length;
-    setFieldRes(res); setSubmitted(true);
-    setTimeout(() => onDone({ i:idx, acc:ok/data.fields.length, err:data.fields.length-ok, ...m }), 1400);
-  };
-  const srcLabels = { name:"Full Name", empId:"Employee ID", dept:"Department", code:"Access Code", date:"Date" };
-  const inpSt = (k) => {
-    const res = fieldRes?.find(r => r.k === k);
-    return { width:"100%", height:L.btnH, padding:"0 12px", borderRadius:R.md, border:`1px solid ${submitted&&res?res.ok?t.success:t.error:t.border}`, background:submitted&&res?res.ok?t.successBg:t.errorBg:t.bg, color:t.text, fontSize:L.fsBase, fontFamily:L.mono, outline:"none", boxSizing:"border-box", letterSpacing:.5 };
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ fontFamily:L.font }}>
-      <TrialHdr t={t} type="form_fill" idx={idx} total={total} />
-      <div style={{ padding:L.spMd, background:t.surface, border:`1px solid ${t.border}`, borderRadius:R.md, marginBottom:L.spMd }}>
-        <div style={{ fontSize:L.fsXs, color:t.textFaint, letterSpacing:1.5, textTransform:"uppercase", marginBottom:L.spSm }}>Reference Card</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(175px,1fr))", gap:L.spSm }}>
-          {Object.entries(data.src).map(([k, v]) => (
-            <div key={k} style={{ padding:`${L.spSm}px ${L.spMd}px`, background:t.bg, borderRadius:R.sm, border:`1px solid ${t.border}` }}>
-              <div style={{ fontSize:L.fsXs, color:t.textFaint, marginBottom:3 }}>{srcLabels[k] || k}</div>
-              <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:t.text, fontFamily:L.mono }}>{v}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div style={{ border:`1px solid ${t.border}`, borderRadius:R.md, overflow:"hidden", marginBottom:L.spMd }}>
-        <div style={{ padding:`${L.spSm}px ${L.spMd}px`, background:t.surface2, borderBottom:`1px solid ${t.border}` }}>
-          <span style={{ fontSize:L.fsXs, fontWeight:L.fwSemi, color:t.textMuted, textTransform:"uppercase", letterSpacing:.5 }}>Enter the four fields below</span>
-        </div>
-        <div style={{ padding:L.spMd, display:"flex", flexDirection:"column", gap:L.spMd }}>
-          {data.fields.map(f => {
-            const res = fieldRes?.find(r => r.k === f.k);
-            return (
-              <div key={f.k} style={{ display:"flex", alignItems:"center", gap:L.spMd }}>
-                <label style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:t.textMuted, width:120, flexShrink:0 }}>{f.l}</label>
-                <input value={vals[f.k]} onChange={e => !submitted && setVals(p => ({ ...p, [f.k]:e.target.value }))} disabled={submitted} placeholder={`Enter ${f.l.toLowerCase()}…`} style={inpSt(f.k)} />
-                {submitted && res && <span style={{ fontSize:20, color:res.ok?t.success:t.error }}>{res.ok?"✓":"✗"}</span>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      {!submitted && (
-        <div style={{ textAlign:"center" }}>
-          <button onClick={submit} disabled={!ready} style={{ height:L.btnH, padding:"0 28px", borderRadius:R.md, border:"none", background:ready?t.accent:t.surface, color:ready?t.accentFg:t.text, fontSize:L.fsBase, fontWeight:L.fwSemi, fontFamily:L.font, cursor:ready?"pointer":"not-allowed", opacity:ready?1:.5 }}>Submit Form</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── CODED RECALL TASK ────────────────────────────────────────────────────────────
-function CodedRecallTask({ t, data, idx, total, onDone, tracker }) {
-  const [phase, setPhase] = useState("show");
-  const [tl, setTl] = useState(data.showMs);
-  const [done, setDone] = useState(false);
-  const [fb, setFb] = useState(null);
-  const [lastRT, setLastRT] = useState(null);
-  useEffect(() => {
-    setPhase("show"); setTl(data.showMs); setDone(false); setFb(null); setLastRT(null); tracker.start();
-    const s = Date.now();
-    const iv = setInterval(() => { const left = data.showMs - (Date.now()-s); if (left <= 0) { setPhase("question"); tracker.setOnset(); clearInterval(iv); } else setTl(left); }, 50);
-    return () => clearInterval(iv);
-  }, [data]);
-  const choose = opt => {
-    if (done) return;
-    const rt = tracker.recordRT(); setLastRT(rt);
-    tracker.click(opt.ok); setDone(true); setFb(opt.ok);
-    setTimeout(() => { const m = tracker.stop(); onDone({ i:idx, rt, acc:opt.ok?1:0, err:opt.ok?0:1, ...m }); }, 700);
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ textAlign:"center", fontFamily:L.font }}>
-      <TrialHdr t={t} type="coded_recall" idx={idx} total={total} rt={lastRT} />
-      {phase === "show" ? (
-        <div>
-          <p style={{ fontSize:L.fsSm, color:t.textMuted, marginBottom:L.spMd }}>Memorise this — you will be asked about it</p>
-          <div style={{ height:4, background:t.border, borderRadius:2, marginBottom:L.spLg, overflow:"hidden" }}>
-            <div style={{ height:"100%", width:`${(tl/data.showMs)*100}%`, background:t.accent, transition:"width .1s" }} />
-          </div>
-          <div style={{ padding:`${L.spXl}px ${L.sp2Xl}px`, background:t.surface, border:`2px solid ${t.border}`, borderRadius:R.lg, display:"inline-block" }}>
-            <div style={{ fontSize:28, fontWeight:L.fwBold, fontFamily:L.mono, color:t.text, letterSpacing:6, whiteSpace:"nowrap" }}>{data.display}</div>
-          </div>
-          <p style={{ marginTop:L.spMd, fontSize:L.fsSm, color:t.textFaint }}>{(tl/1000).toFixed(1)}s remaining</p>
-        </div>
-      ) : (
-        <div>
-          <div style={{ padding:`${L.spMd}px`, background:t.surface, border:`1px solid ${t.border}`, borderRadius:R.md, marginBottom:L.spXl, fontSize:L.fsMd, fontWeight:L.fwSemi, color:t.text }}>{data.question}</div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:L.spMd, maxWidth:380, margin:"0 auto" }}>
-            {data.opts.map(opt => (
-              <button key={opt.id} onClick={() => choose(opt)} disabled={done}
-                style={{ height:56, borderRadius:R.md, border:`1px solid ${done&&opt.ok?t.success:t.border}`, background:done&&opt.ok?t.successBg:t.surface, color:done&&opt.ok?t.success:t.text, fontSize:L.fsMd, fontWeight:L.fwBold, fontFamily:L.mono, cursor:done?"default":"pointer", transition:"all .15s" }}>
-                {opt.v}
-              </button>
-            ))}
-          </div>
-          {fb !== null && <p style={{ marginTop:L.spMd, fontSize:L.fsSm, color:fb?t.success:t.error, fontWeight:L.fwSemi }}>{fb?"✓ Correct":"✗ Incorrect"}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── NAVIGATION TASK ──────────────────────────────────────────────────────────────
-// ─── SYMBOL MATCH TASK ───────────────────────────────────────────────────────────
 function SymbolMatchTask({ t, data, idx, total, onDone, tracker }) {
   const [sel, setSel] = useState(null);
   const ref = useRef(false);
@@ -2586,49 +2071,6 @@ function NavTask({ t, data, idx, total, onDone, tracker }) {
 }
 
 // ─── READING COMPREHENSION TASK ────────────────────────────────────────────────────
-function ReadingCompTask({ t, data, idx, total, onDone, tracker }) {
-  const [phase, setPhase] = useState("read");
-  const [done, setDone] = useState(false);
-  const [fb, setFb] = useState(null);
-  const [lastRT, setLastRT] = useState(null);
-  useEffect(() => { setPhase("read"); setDone(false); setFb(null); setLastRT(null); tracker.start(); }, [data]);
-  const advance = () => { setPhase("question"); tracker.setOnset(); };
-  const choose = opt => {
-    if (done) return;
-    const rt = tracker.recordRT(); setLastRT(rt);
-    tracker.click(opt.ok); setDone(true); setFb(opt.ok);
-    setTimeout(() => { const m = tracker.stop(); onDone({ i:idx, rt, acc:opt.ok?1:0, err:opt.ok?0:1, ...m }); }, 700);
-  };
-  return (
-    <div onMouseMove={tracker.onMove} style={{ fontFamily:L.font }}>
-      <TrialHdr t={t} type="reading_comp" idx={idx} total={total} rt={lastRT} />
-      {phase === "read" ? (
-        <div>
-          <div style={{ padding:L.spLg, background:t.surface, border:`1px solid ${t.border}`, borderRadius:R.lg, marginBottom:L.spMd }}>
-            <div style={{ fontSize:L.fsXs, color:t.textFaint, letterSpacing:1.5, textTransform:"uppercase", marginBottom:L.spMd }}>Read carefully</div>
-            <p style={{ fontSize:L.fsMd, color:t.text, lineHeight:1.85, margin:0 }}>{data.text}</p>
-          </div>
-          <div style={{ textAlign:"center" }}>
-            <button onClick={advance} style={{ height:L.btnH, padding:"0 28px", borderRadius:R.md, border:"none", background:t.accent, color:t.accentFg, fontSize:L.fsBase, fontWeight:L.fwSemi, fontFamily:L.font, cursor:"pointer" }}>I've Read It — Continue →</button>
-          </div>
-        </div>
-      ) : (
-        <div>
-          <div style={{ padding:L.spMd, background:t.surface, border:`1px solid ${t.border}`, borderRadius:R.md, marginBottom:L.spLg, fontSize:L.fsMd, fontWeight:L.fwSemi, color:t.text, textAlign:"center" }}>{data.question}</div>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:L.spMd }}>
-            {data.opts.map(opt => (
-              <button key={opt.id} onClick={() => choose(opt)} disabled={done}
-                style={{ padding:L.spMd, borderRadius:R.md, border:`1px solid ${done&&opt.ok?t.success:t.border}`, background:done&&opt.ok?t.successBg:t.surface, color:done&&opt.ok?t.success:t.text, fontSize:L.fsBase, fontFamily:L.font, cursor:done?"default":"pointer", transition:"all .15s", minHeight:56, lineHeight:1.4 }}>
-                {opt.v}
-              </button>
-            ))}
-          </div>
-          {fb !== null && <p style={{ textAlign:"center", marginTop:L.spMd, fontSize:L.fsSm, color:fb?t.success:t.error, fontWeight:L.fwSemi }}>{fb?"✓ Correct":"✗ Incorrect"}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
 
 const TCOMPS = { visual_search:VisualSearchTask, flanker:FlankerTask, symbol_match:SymbolMatchTask, sentence_verify:SentenceVerifyTask, trail_making:TrailMakingTask, digit_span:DigitSpanTask, n_back:NBackTask2, nav_task:NavTask };
 
@@ -3931,9 +3373,8 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
 // ─── ANALYSIS TAB ────────────────────────────────────────────────────────────────
 // ─── ANALYSIS TAB ─────────────────────────────────────────────────────────────────
 function AnalysisTab({ u, users }) {
-  const [res, setRes] = useState(null);
-  useEffect(() => { setRes(computeAnalysis(users)); }, [users]);
-  if (!res) return <div style={{ padding:L.spXl, color:u.text3, fontFamily:L.font }}>Computing…</div>;
+  const res = useMemo(() => computeAnalysis(users), [users]);
+  if (!res || res.insufficient === undefined) return <div style={{ padding:L.spXl, color:u.text3, fontFamily:L.font }}>Computing…</div>;
   if (res.insufficient) return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }}>
       <SectionHdr u={u} eyebrow="Analysis" title="Insufficient Data" />
@@ -3949,16 +3390,25 @@ function AnalysisTab({ u, users }) {
     power: resPower = {}, wilcoxon: resWilcoxon = {}, orderEffect: resOrderEffect = {},
     practiceEffect: resPracticeEffect = null, corrMatrix: resCorrMatrix = [],
     corrKeys: resCorrKeys = [], corrLabels: resCorrLabels = [], taskTests: resTaskTests = [] } = res;
+
   const dk = u.accent2, lt = u.gold;
   const N = pairs.length;
   const N_TESTS = 11;
   const ALPHA_BONF = (0.05 / N_TESTS).toFixed(4);
-  const sigCount = Object.values(tests).filter(t => t?.sig).length;
+  const sigCount  = Object.values(tests).filter(t => t?.sig).length;
   const margCount = Object.values(tests).filter(t => t?.marginal).length;
+
+  // Precompute summary for APA text (avoids inline IIFE)
+  const sigTests  = TEST_ROWS.filter(r => tests[r.k]?.sig);
+  const margTests = TEST_ROWS.filter(r => tests[r.k]?.marginal);
+  const accT = tests.acc, rtT = tests.rt, nasaT = tests.nasa;
+  const accD = desc.acc, rtD = desc.rt;
+  const pe   = resPracticeEffect;
+
   const fv = v => v == null || isNaN(v) ? "—" : Math.abs(v) >= 100 ? Math.round(v).toString() : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3);
   const dColor = d => d == null ? u.text3 : Math.abs(d) >= 0.8 ? u.red : Math.abs(d) >= 0.5 ? u.orange : Math.abs(d) >= 0.2 ? u.teal : u.text3;
   const thS = { padding:"7px 10px", fontSize:L.fsXs, color:u.text3, fontWeight:L.fwSemi, background:u.fill, borderBottom:`1px solid ${u.border}`, textAlign:"left", whiteSpace:"nowrap" };
-  const tdS = c => ({ padding:"7px 10px", fontSize:L.fsXs, color:c||u.text, borderBottom:`1px solid ${u.border}`, whiteSpace:"nowrap" });
+  const tdS = (c, fs) => ({ padding:"7px 10px", fontSize:fs||L.fsXs, color:c||u.text, borderBottom:`1px solid ${u.border}`, whiteSpace:"nowrap" });
 
   const TEST_ROWS = [
     { k:"acc",    l:"Accuracy",         unit:"",     higherBetter:true  },
@@ -4583,33 +4033,31 @@ function AnalysisTab({ u, users }) {
         </div>
         {!resPracticeEffect ? (
           <div style={{ color:u.text3, fontSize:L.fsSm }}>Insufficient data for practice effect analysis.</div>
-        ) : (() => {
-          const pe = resPracticeEffect;
-          const improved = pe.meanDiff < 0; // Phase2 > Phase1 means diff (P1-P2) < 0
-          return (
-            <div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:L.spMd, marginBottom:L.spMd }}>
-                {[
-                  { l:"Mean Difference", v:pe.meanDiff!=null?fv(pe.meanDiff):"—", c:pe.meanDiff<0?u.green:u.red },
-                  { l:"Std Dev (diff)", v:pe.sd!=null?fv(pe.sd):"—", c:u.text3 },
-                  { l:"t-statistic", v:pe.t, c:u.teal },
-                  { l:"p-value", v:pe.p?.toFixed(4), c:pe.sig?u.red:u.green },
-                  { l:"Cohen's d", v:pe.cohensD, c:dColor(pe.cohensD) },
-                ].map(({ l, v, c }) => (
-                  <div key={l} style={{ padding:L.spMd, background:u.fill, borderRadius:R.md, textAlign:"center" }}>
-                    <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:3 }}>{l}</div>
-                    <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:c, fontFamily:L.mono }}>{v}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ padding:L.spMd, borderRadius:R.md, background:pe.sig?`${u.orange}10`:`${u.green}10`, border:`1px solid ${pe.sig?u.orange:u.green}28` }}>
-                <span style={{ fontSize:L.fsSm, color:pe.sig?u.orange:u.green, fontWeight:L.fwSemi }}>
-                  {pe.sig ? `⚠ Significant practice effect detected (p = ${pe.p?.toFixed(4)}) — performance ${improved?"improved":"declined"} from Phase 1 to Phase 2. Report as limitation.` : `✓ No significant practice effect (p = ${pe.p?.toFixed(4)}) — theme order did not systematically affect performance.`}
-                </span>
-              </div>
+        ) : (
+          <div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:L.spMd, marginBottom:L.spMd }}>
+              {[
+                { l:"Mean Difference", v:pe?.meanDiff!=null?fv(pe.meanDiff):"—", c:pe?.meanDiff<0?u.green:u.red },
+                { l:"Std Dev (diff)",  v:pe?.sd!=null?fv(pe.sd):"—",            c:u.text3 },
+                { l:"t-statistic",     v:pe?.t,                                  c:u.teal },
+                { l:"p-value",         v:pe?.p?.toFixed(4),                      c:pe?.sig?u.red:u.green },
+                { l:"Cohen's d",       v:pe?.cohensD,                            c:dColor(pe?.cohensD) },
+              ].map(({ l, v, c }) => (
+                <div key={l} style={{ padding:L.spMd, background:u.fill, borderRadius:R.md, textAlign:"center" }}>
+                  <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:3 }}>{l}</div>
+                  <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:c, fontFamily:L.mono }}>{v}</div>
+                </div>
+              ))}
             </div>
-          );
-        })()}
+            <div style={{ padding:L.spMd, borderRadius:R.md, background:pe?.sig?`${u.orange}10`:`${u.green}10`, border:`1px solid ${pe?.sig?u.orange:u.green}28` }}>
+              <span style={{ fontSize:L.fsSm, color:pe?.sig?u.orange:u.green, fontWeight:L.fwSemi }}>
+                {pe?.sig
+                  ? `⚠ Significant practice effect detected (p = ${pe.p?.toFixed(4)}) — performance changed from Phase 1 to Phase 2. Report as limitation.`
+                  : `✓ No significant practice effect (p = ${pe?.p?.toFixed(4)}) — theme order did not systematically affect performance.`}
+              </span>
+            </div>
+          </div>
+        )}
       </Card>
 
       {/* ── Per-Task Tests ── */}
@@ -4673,25 +4121,15 @@ function AnalysisTab({ u, users }) {
         <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>APA-Formatted Results Section</div>
         <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Ready to copy into your thesis or paper. Update participant demographics and study context as needed.</div>
         <div style={{ padding:L.spLg, background:u.fill, borderRadius:R.md, border:`1px solid ${u.border}`, fontSize:L.fsSm, color:u.text2, lineHeight:2, fontFamily:"Georgia,serif", userSelect:"all" }}>
-          {(() => {
-            const sigTests = TEST_ROWS.filter(r => tests[r.k]?.sig);
-            const margTests = TEST_ROWS.filter(r => tests[r.k]?.marginal);
-            const accT = tests.acc, rtT = tests.rt, nasaT = tests.nasa;
-            const accD = desc.acc, rtD = desc.rt;
-            const pe = resPracticeEffect;
-            return (
-              <>
-                <p><strong>Participants.</strong> {N} participants ({res.demoSummary?.n || N} with complete data) completed a within-subjects experiment comparing dark and light interface themes across {CFG.tasks.length} cognitive tasks. Counterbalancing ensured equal group sizes (DL: n = {res.counterbalance?.dl}, LD: n = {res.counterbalance?.ld}).</p>
-                <p><strong>Analysis.</strong> Paired-samples t-tests were conducted for {TEST_ROWS.length} dependent variables with Bonferroni correction (adjusted α = {(0.05/11).toFixed(4)}). Effect sizes are reported as Cohen's <em>d</em>. Where the Jarque-Bera test indicated non-normality, Wilcoxon signed-rank tests were conducted as non-parametric alternatives.</p>
-                {accT && <p><strong>Accuracy.</strong> {accD?.dark?.mean != null && accD?.light?.mean != null ? `Mean accuracy in dark mode (M = ${fv(accD.dark.mean)}, SD = ${fv(accD.dark.sd)}) was ${accD.dark.mean > accD.light.mean ? "higher" : "lower"} than in light mode (M = ${fv(accD.light.mean)}, SD = ${fv(accD.light.sd)}). ` : ""}A paired-samples t-test {accT.sig ? "revealed a statistically significant difference" : "did not reveal a statistically significant difference"}, t({accT.df}) = {accT.t}, p = {accT.p?.toFixed(4)} (Bonferroni-adjusted p = {Math.min(1, (accT.p||0)*11).toFixed(4)}), d = {accT.cohensD} [{accT.ci95 ? `95% CI: ${fv(accT.ci95.lower)}, ${fv(accT.ci95.upper)}` : ""}].</p>}
-                {rtT && <p><strong>Response Time.</strong> Mean response time in dark mode (M = {fv(desc.rt?.dark?.mean)} ms, SD = {fv(desc.rt?.dark?.sd)}) and light mode (M = {fv(desc.rt?.light?.mean)} ms, SD = {fv(desc.rt?.light?.sd)}). t({rtT.df}) = {rtT.t}, p = {rtT.p?.toFixed(4)}, d = {rtT.cohensD}.</p>}
-                {nasaT && <p><strong>Cognitive Workload (NASA-TLX).</strong> Mean workload in dark mode (M = {fv(desc.nasa?.dark?.mean)}, SD = {fv(desc.nasa?.dark?.sd)}) and light mode (M = {fv(desc.nasa?.light?.mean)}, SD = {fv(desc.nasa?.light?.sd)}). t({nasaT.df}) = {nasaT.t}, p = {nasaT.p?.toFixed(4)}, d = {nasaT.cohensD}.</p>}
-                {sigTests.length > 0 && <p><strong>Significant findings.</strong> The following variables reached Bonferroni-corrected significance: {sigTests.map((r, i) => `${r.l} (t(${tests[r.k].df}) = ${tests[r.k].t}, p = ${tests[r.k].p?.toFixed(4)}, d = ${tests[r.k].cohensD})`).join("; ")}.</p>}
-                {sigTests.length === 0 && <p><strong>Null findings.</strong> No variables reached Bonferroni-corrected significance (α = {(0.05/11).toFixed(4)}). {margTests.length > 0 ? `Marginal effects were observed for: ${margTests.map(r => r.l).join(", ")} (uncorrected p < .05). ` : ""}Effect sizes and confidence intervals are the primary basis for interpretation given the preliminary sample size.</p>}
-                {pe && <p><strong>Practice effects.</strong> {pe.sig ? `A significant practice effect was detected, t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, d = ${pe.cohensD}, indicating that performance changed from Phase 1 to Phase 2 regardless of theme. This should be considered when interpreting theme-related differences.` : `No significant practice effect was detected, t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, suggesting that performance was stable across phases.`}</p>}
-              </>
-            );
-          })()}
+          <p><strong>Participants.</strong> {N} participants completed a within-subjects experiment comparing dark and light interface themes across {CFG.tasks.length} cognitive tasks. Counterbalancing ensured equal group assignment (DL: n = {cb?.dl ?? "—"}, LD: n = {cb?.ld ?? "—"}).</p>
+          <p><strong>Analysis.</strong> Paired-samples t-tests were conducted for {TEST_ROWS.length} dependent variables with Bonferroni correction (adjusted α = {ALPHA_BONF}). Effect sizes are reported as Cohen's <em>d</em>. Where Jarque-Bera indicated non-normality, Wilcoxon signed-rank tests were conducted as non-parametric alternatives.</p>
+          {accT && <p><strong>Accuracy.</strong> {accD?.dark?.mean != null ? `Mean accuracy in dark mode (M = ${fv(accD.dark.mean)}, SD = ${fv(accD.dark.sd)}) was ${accD.dark.mean > accD.light.mean ? "higher" : "lower"} than light mode (M = ${fv(accD.light.mean)}, SD = ${fv(accD.light.sd)}). ` : ""}A paired-samples t-test {accT.sig ? "revealed a statistically significant difference" : "did not reveal a statistically significant difference"}, t({accT.df}) = {accT.t}, p = {accT.p?.toFixed(4)} (Bonferroni-adjusted p = {Math.min(1,(accT.p||0)*11).toFixed(4)}), d = {accT.cohensD}{accT.ci95 ? `, 95% CI [${fv(accT.ci95.lower)}, ${fv(accT.ci95.upper)}]` : ""}.</p>}
+          {rtT && <p><strong>Response Time.</strong> Dark mode (M = {fv(desc.rt?.dark?.mean)} ms, SD = {fv(desc.rt?.dark?.sd)}) vs light mode (M = {fv(desc.rt?.light?.mean)} ms, SD = {fv(desc.rt?.light?.sd)}). t({rtT.df}) = {rtT.t}, p = {rtT.p?.toFixed(4)}, d = {rtT.cohensD}.</p>}
+          {nasaT && <p><strong>Cognitive Workload (NASA-TLX).</strong> Dark mode (M = {fv(desc.nasa?.dark?.mean)}, SD = {fv(desc.nasa?.dark?.sd)}) vs light mode (M = {fv(desc.nasa?.light?.mean)}, SD = {fv(desc.nasa?.light?.sd)}). t({nasaT.df}) = {nasaT.t}, p = {nasaT.p?.toFixed(4)}, d = {nasaT.cohensD}.</p>}
+          {sigTests.length > 0
+            ? <p><strong>Significant findings.</strong> {sigTests.map((r,i) => `${r.l}: t(${tests[r.k].df}) = ${tests[r.k].t}, p = ${tests[r.k].p?.toFixed(4)}, d = ${tests[r.k].cohensD}`).join("; ")}.</p>
+            : <p><strong>Null findings.</strong> No variables reached Bonferroni-corrected significance (α = {ALPHA_BONF}).{margTests.length > 0 ? ` Marginal effects: ${margTests.map(r=>r.l).join(", ")} (uncorrected p < .05).` : ""} Effect sizes and confidence intervals are the primary basis for interpretation given the preliminary sample size.</p>}
+          {pe && <p><strong>Practice effects.</strong> {pe.sig ? `A significant practice effect was detected, t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, d = ${pe.cohensD}. This should be considered when interpreting theme differences.` : `No significant practice effect, t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, indicating stable performance across phases.`}</p>}
         </div>
         <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spSm }}>💡 Select all text above to copy. Review and customise before submission.</div>
       </Card>
@@ -5265,16 +4703,17 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
       setTimeout(() => setCopied(false), 2000);
     });
   };
-  const allExps = users.flatMap(usr => (usr.experiments || []).map(e => ({ ...e, uid: usr.id })));
-  const allT = allExps.flatMap(e => (e.tasks || []).flatMap(t => (t.trials || []).map(tr => ({ ...tr, theme: e.theme, task: t.type }))));
-  const dkT = allT.filter(t => t.theme === "dark"), ltT = allT.filter(t => t.theme === "light");
-  const dkRTs = dkT.filter(t => t.rt && t.rt > 50).map(t => t.rt);
-  const ltRTs = ltT.filter(t => t.rt && t.rt > 50).map(t => t.rt);
-  const tStats = CFG.tasks.map(tid => {
+  const allExps = useMemo(() => users.flatMap(usr => (usr.experiments || []).map(e => ({ ...e, uid: usr.id }))), [users]);
+  const allT    = useMemo(() => allExps.flatMap(e => (e.tasks || []).flatMap(t => (t.trials || []).map(tr => ({ ...tr, theme: e.theme, task: t.type })))), [allExps]);
+  const dkT     = useMemo(() => allT.filter(t => t.theme === "dark"),  [allT]);
+  const ltT     = useMemo(() => allT.filter(t => t.theme === "light"), [allT]);
+  const dkRTs   = useMemo(() => dkT.filter(t => t.rt && t.rt > 50).map(t => t.rt), [dkT]);
+  const ltRTs   = useMemo(() => ltT.filter(t => t.rt && t.rt > 50).map(t => t.rt), [ltT]);
+  const tStats  = useMemo(() => CFG.tasks.map(tid => {
     const tr = allT.filter(t => t.task === tid);
     const dk = tr.filter(t => t.theme === "dark"), lt = tr.filter(t => t.theme === "light");
-    return { tid, l: CFG.TL[tid], n: tr.length, acc: avg(tr.map(t => t.acc || 0)), dk: { acc: avg(dk.map(t => t.acc || 0)), rt: avg(dk.filter(t => t.rt).map(t => t.rt)) }, lt: { acc: avg(lt.map(t => t.acc || 0)), rt: avg(lt.filter(t => t.rt).map(t => t.rt)) } };
-  });
+    return { tid, l: CFG.TL[tid] || tid, n: tr.length, acc: avg(tr.map(t => t.acc || 0)), dk: { acc: avg(dk.map(t => t.acc || 0)), rt: avg(dk.filter(t => t.rt).map(t => t.rt)) }, lt: { acc: avg(lt.map(t => t.acc || 0)), rt: avg(lt.filter(t => t.rt).map(t => t.rt)) } };
+  }), [allT]);
   const navItems = [{ id:"overview", l:"Overview", icon:"📋" }, { id:"monitor", l:"Live Monitor", icon:"🟢" }, { id:"participants", l:"Participants", icon:"👥" }, { id:"statistics", l:"Statistics", icon:"📈" }, { id:"stats_engine", l:"Analysis", icon:"🔬" }, { id:"limitations", l:"Limitations", icon:"⚠" }, { id:"settings", l:"Settings", icon:"⚙️" }];
   const { mobile } = useBreakpoint();
   return (
@@ -5365,7 +4804,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
       <div style={{ flex:1, overflowY:"auto", minWidth:0 }}>
         <div style={{ width:"100%", padding:mobile?`${L.spMd}px 14px`:`${L.spXl}px ${L.spLg}px` }}>
         {tab === "overview" && (
-          <div className="au">
+          <TabErrorBoundary u={u}><div className="au">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
               <h1 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: 0 }}>Study Overview</h1>
             </div>
@@ -5396,10 +4835,10 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 <HBar u={u} data={tStats.map((ts, i) => ({ l: ts.l.split(" ")[0], v: ts.acc * 100, c: u.chart[i % u.chart.length], fmt: fmtPct(ts.acc) }))} />
               </Card>
             </div>
-          </div>
+          </div></TabErrorBoundary>
         )}
         {tab === "participants" && (
-          <div className="au">
+          <TabErrorBoundary u={u}><div className="au">
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
               <h1 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: 0 }}>{sel ? "Participant Detail" : "Participants"}</h1>
               {sel && <Btn u={u} v="ghost" sm onClick={() => setSel(null)}>‹ Back</Btn>}
@@ -5565,11 +5004,11 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 })}
               </div>
             )}
-          </div>
+          </div></TabErrorBoundary>
         )}
-        {tab === "monitor" && <LiveMonitorTab u={u} users={users} />}
+        {tab === "monitor" && <TabErrorBoundary u={u}><LiveMonitorTab u={u} users={users} /></TabErrorBoundary>}
         {tab === "statistics" && (
-          <div className="au">
+          <TabErrorBoundary u={u}><div className="au">
             <h1 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: "0 0 24px" }}>Statistics</h1>
             <ParticipantHeatmap u={u} users={users} />
             <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
@@ -5604,11 +5043,11 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 </Card>
               ))}
             </div>
-          </div>
+          </div></TabErrorBoundary>
         )}
-        {tab === "stats_engine" && <AnalysisTab u={u} users={users} />}
-        {tab === "limitations" && <LimitationsTab u={u} />}
-        {tab === "settings" && <SettingsTab u={u} />}
+        {tab === "stats_engine" && <TabErrorBoundary u={u}><AnalysisTab u={u} users={users} /></TabErrorBoundary>}
+        {tab === "limitations" && <TabErrorBoundary u={u}><LimitationsTab u={u} /></TabErrorBoundary>}
+        {tab === "settings"    && <TabErrorBoundary u={u}><SettingsTab u={u} /></TabErrorBoundary>}
         </div>
       </div>
     </div>
