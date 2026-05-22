@@ -3945,7 +3945,10 @@ function AnalysisTab({ u, users }) {
     </div>
   );
 
-  const { pairs, desc, tests, taskBreak, METRICS, counterbalance: cb, szLabel: sz, allAcc, allTT, derivedMetrics, demoSummary, reliability } = res;
+  const { pairs, desc, tests, taskBreak, METRICS, counterbalance: cb, szLabel: sz, allAcc, allTT, derivedMetrics, demoSummary, reliability,
+    power: resPower = {}, wilcoxon: resWilcoxon = {}, orderEffect: resOrderEffect = {},
+    practiceEffect: resPracticeEffect = null, corrMatrix: resCorrMatrix = [],
+    corrKeys: resCorrKeys = [], corrLabels: resCorrLabels = [], taskTests: resTaskTests = [] } = res;
   const dk = u.accent2, lt = u.gold;
   const N = pairs.length;
   const N_TESTS = 11;
@@ -4481,7 +4484,7 @@ function AnalysisTab({ u, users }) {
             <thead><tr>{["Variable","Cohen's d","n pairs","Power (1−β)","Adequate?","Interpretation"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
             <tbody>
               {TEST_ROWS.map(({ k, l }) => {
-                const t = tests[k]; const pw = res.power?.[k];
+                const t = tests[k]; const pw = resPower?.[k];
                 if (!t) return null;
                 const adequate = pw != null && pw >= 0.80;
                 const pwCol = pw == null ? u.text3 : pw >= 0.80 ? u.green : pw >= 0.50 ? u.orange : u.red;
@@ -4515,7 +4518,7 @@ function AnalysisTab({ u, users }) {
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr>{["Variable","W statistic","z","p (Wilcoxon)","Sig?","Matches t-test?","Normality"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
             <tbody>
-              {Object.entries(res.wilcoxon||{}).map(([k, w]) => {
+              {Object.entries(resWilcoxon||{}).map(([k, w]) => {
                 const t = tests[k]; const row = TEST_ROWS.find(r=>r.k===k);
                 if (!row) return null;
                 const matches = w && t ? w.sig === t.sig : null;
@@ -4542,16 +4545,16 @@ function AnalysisTab({ u, users }) {
         <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Order Effect Check (DL vs LD Groups)</div>
         <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
           Compares the dark−light difference score between counterbalance groups using Welch's independent t-test. A significant result indicates an order effect (theme order affected outcomes).
-          DL group: n = {res.pairs.filter(p=>valid.find(u2=>u2.id===p.pid)?.orderGroup==="DL").length} · LD group: n = {res.pairs.filter(p=>valid.find(u2=>u2.id===p.pid)?.orderGroup==="LD").length}
+          DL group: n = {res.pairs.filter(p=>users.find(u2=>u2.id===p.pid)?.orderGroup==="DL").length} · LD group: n = {res.pairs.filter(p=>users.find(u2=>u2.id===p.pid)?.orderGroup==="LD").length}
         </div>
-        {Object.keys(res.orderEffect||{}).length === 0 ? (
+        {Object.keys(resOrderEffect||{}).length === 0 ? (
           <div style={{ color:u.text3, fontSize:L.fsSm }}>Insufficient group sizes for order effect analysis. Need ≥ 2 participants per group.</div>
         ) : (
           <div className="tbl-wrap">
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
               <thead><tr>{["Metric","DL Δ Mean","LD Δ Mean","t","df","p","Order Effect?"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
               <tbody>
-                {Object.entries(res.orderEffect).map(([k, oe]) => {
+                {Object.entries(resOrderEffect).map(([k, oe]) => {
                   const row = TEST_ROWS.find(r=>r.k===k);
                   if (!row) return null;
                   return (
@@ -4578,17 +4581,17 @@ function AnalysisTab({ u, users }) {
         <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
           Compares overall accuracy in Phase 1 vs Phase 2 regardless of theme. A significant improvement indicates learning/practice effects that should be reported as a limitation.
         </div>
-        {!res.practiceEffect ? (
+        {!resPracticeEffect ? (
           <div style={{ color:u.text3, fontSize:L.fsSm }}>Insufficient data for practice effect analysis.</div>
         ) : (() => {
-          const pe = res.practiceEffect;
+          const pe = resPracticeEffect;
           const improved = pe.meanDiff < 0; // Phase2 > Phase1 means diff (P1-P2) < 0
           return (
             <div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:L.spMd, marginBottom:L.spMd }}>
                 {[
-                  { l:"Phase 1 Mean", v:fv((p1Scores=>avg(p1Scores))(res.pairs.map(p=>{const u2=valid.find(u3=>u3.id===p.pid);const s=(u2?.experiments||[]).filter(e=>(e.tasks||[]).length>0)[0];const t2=(s?.tasks||[]).flatMap(t=>t.trials||[]);return t2.length?avg(t2.map(t=>t.acc||0)):null}).filter(v=>v!=null))), c:dk },
-                  { l:"Phase 2 Mean", v:fv((p2Scores=>avg(p2Scores))(res.pairs.map(p=>{const u2=valid.find(u3=>u3.id===p.pid);const s=(u2?.experiments||[]).filter(e=>(e.tasks||[]).length>0)[1];const t2=(s?.tasks||[]).flatMap(t=>t.trials||[]);return t2.length?avg(t2.map(t=>t.acc||0)):null}).filter(v=>v!=null))), c:lt },
+                  { l:"Mean Difference", v:pe.meanDiff!=null?fv(pe.meanDiff):"—", c:pe.meanDiff<0?u.green:u.red },
+                  { l:"Std Dev (diff)", v:pe.sd!=null?fv(pe.sd):"—", c:u.text3 },
                   { l:"t-statistic", v:pe.t, c:u.teal },
                   { l:"p-value", v:pe.p?.toFixed(4), c:pe.sig?u.red:u.green },
                   { l:"Cohen's d", v:pe.cohensD, c:dColor(pe.cohensD) },
@@ -4617,7 +4620,7 @@ function AnalysisTab({ u, users }) {
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead><tr>{["Task","🌙 Dark","☀️ Light","Δ","t","df","p","d","Effect"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
             <tbody>
-              {(res.taskTests||[]).map(({ tid, label, test: tt }) => {
+              {(resTaskTests||[]).map(({ tid, label, test: tt }) => {
                 if (!tt) return null;
                 const dm = desc[`task_${tid}`]?.dark?.mean ?? res.taskBreak.find(t=>t.tid===tid)?.dark?.mean;
                 const lm = desc[`task_${tid}`]?.light?.mean ?? res.taskBreak.find(t=>t.tid===tid)?.light?.mean;
@@ -4647,11 +4650,11 @@ function AnalysisTab({ u, users }) {
         <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Correlations between key metrics across participants. |r| &gt; 0.5 = strong · |r| &gt; 0.3 = moderate · positive = same direction</div>
         <div className="tbl-wrap">
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead><tr><th style={thS}></th>{(res.corrLabels||[]).map(l=><th key={l} style={thS}>{l}</th>)}</tr></thead>
+            <thead><tr><th style={thS}></th>{(resCorrLabels||[]).map(l=><th key={l} style={thS}>{l}</th>)}</tr></thead>
             <tbody>
-              {(res.corrMatrix||[]).map((row, i) => (
+              {(resCorrMatrix||[]).map((row, i) => (
                 <tr key={i}>
-                  <td style={{ ...tdS(u.text), fontWeight:L.fwSemi }}>{res.corrLabels?.[i]}</td>
+                  <td style={{ ...tdS(u.text), fontWeight:L.fwSemi }}>{resCorrLabels?.[i]}</td>
                   {row.map((r, j) => {
                     if (i === j) return <td key={j} style={{ ...tdS(u.text3), textAlign:"center", background:u.fill }}>1.00</td>;
                     const col = r == null ? u.text3 : Math.abs(r) > 0.5 ? u.green : Math.abs(r) > 0.3 ? u.teal : u.text3;
@@ -4675,7 +4678,7 @@ function AnalysisTab({ u, users }) {
             const margTests = TEST_ROWS.filter(r => tests[r.k]?.marginal);
             const accT = tests.acc, rtT = tests.rt, nasaT = tests.nasa;
             const accD = desc.acc, rtD = desc.rt;
-            const pe = res.practiceEffect;
+            const pe = resPracticeEffect;
             return (
               <>
                 <p><strong>Participants.</strong> {N} participants ({res.demoSummary?.n || N} with complete data) completed a within-subjects experiment comparing dark and light interface themes across {CFG.tasks.length} cognitive tasks. Counterbalancing ensured equal group sizes (DL: n = {res.counterbalance?.dl}, LD: n = {res.counterbalance?.ld}).</p>
