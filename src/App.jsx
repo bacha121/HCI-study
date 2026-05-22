@@ -299,9 +299,60 @@ const stat = {
       sig: p != null && p < 0.05,
     };
   },
+  // Normal CDF approximation (Abramowitz & Stegun)
+  normalCDF: z => {
+    const t2 = 1 / (1 + 0.2316419 * Math.abs(z));
+    const d2 = 0.3989423 * Math.exp(-z * z / 2);
+    const p2 = d2 * t2 * (0.3193815 + t2 * (-0.3565638 + t2 * (1.7814779 + t2 * (-1.8212560 + t2 * 1.3302744))));
+    return z > 0 ? 1 - p2 : p2;
+  },
+  // Observed statistical power for paired t-test
+  power: (cohensD, n, alpha) => {
+    if (!cohensD || !n || n < 2) return null;
+    const za = alpha <= 0.005 ? 2.838 : 1.960;
+    const ncp = Math.abs(cohensD) * Math.sqrt(n);
+    const z1 = ncp - za;
+    const t3 = 1 / (1 + 0.2316419 * Math.abs(z1));
+    const d3 = 0.3989423 * Math.exp(-z1 * z1 / 2);
+    const pw = d3 * t3 * (0.3193815 + t3 * (-0.3565638 + t3 * (1.7814779 + t3 * (-1.8212560 + t3 * 1.3302744))));
+    const power = z1 > 0 ? 1 - pw : pw;
+    return Math.min(0.9999, Math.max(0.0001, power));
+  },
+  // Wilcoxon signed-rank test
+  wilcoxon: (a, b) => {
+    const n = Math.min(a.length, b.length);
+    if (n < 4) return null;
+    const diffs = a.slice(0, n).map((v, i) => v - b[i]).filter(d => d !== 0);
+    if (diffs.length < 2) return null;
+    const sorted = [...diffs.map((d, i) => ({ v: Math.abs(d), sign: d > 0 ? 1 : -1, i }))].sort((x, y) => x.v - y.v);
+    sorted.forEach((x, i) => { x.rank = i + 1; });
+    const W = sorted.filter(x => x.sign > 0).reduce((s, x) => s + x.rank, 0);
+    const nd = diffs.length;
+    const mu = nd * (nd + 1) / 4;
+    const sigma2 = Math.sqrt(nd * (nd + 1) * (2 * nd + 1) / 24);
+    if (!sigma2) return null;
+    const z = (W - mu) / sigma2;
+    const t4 = 1/(1+0.2316419*Math.abs(z)), d4=0.3989423*Math.exp(-z*z/2);
+    const pw2 = d4*t4*(0.3193815+t4*(-0.3565638+t4*(1.7814779+t4*(-1.8212560+t4*1.3302744))));
+    const pv = 2 * Math.min(0.5, z > 0 ? pw2 : 1 - pw2);
+    return { W: +W.toFixed(1), z: +z.toFixed(3), p: +pv.toFixed(4), sig: pv < 0.05, n: nd };
+  },
+  // Independent samples t-test (Welch's) for order effect
+  independentT: (a, b) => {
+    if (a.length < 2 || b.length < 2) return null;
+    const ma = stat.mean(a), mb = stat.mean(b);
+    const sa = stat.sd(a), sb = stat.sd(b);
+    if (!sa || !sb) return null;
+    const na = a.length, nb = b.length;
+    const se = Math.sqrt(sa*sa/na + sb*sb/nb);
+    const tv = (ma - mb) / se;
+    const df = Math.pow(sa*sa/na + sb*sb/nb, 2) / (Math.pow(sa*sa/na, 2)/(na-1) + Math.pow(sb*sb/nb, 2)/(nb-1));
+    const pv = tTailP(tv, df);
+    const pooled = Math.sqrt(((na-1)*sa*sa + (nb-1)*sb*sb) / (na+nb-2));
+    const dv = pooled ? (ma - mb) / pooled : null;
+    return { t: +tv.toFixed(3), p: pv ? +pv.toFixed(4) : null, df: Math.round(df), meanA: +ma.toFixed(4), meanB: +mb.toFixed(4), cohensD: dv ? +dv.toFixed(3) : null, sig: pv != null && pv < 0.05 };
+  },
 };
-
-// Sample size validation
 function sampleSizeLabel(n) {
   if (n < 5)  return { l: "Critical",   c: "red",    note: "Do not interpret findings. Collect substantially more data.",                preliminary: true  };
   if (n < 10) return { l: "Very Small", c: "orange", note: "Highly preliminary — treat all findings with extreme caution.",             preliminary: true  };
@@ -568,7 +619,81 @@ function computeAnalysis(users) {
     comfort: { alpha: cronbachAlpha(comfortMatrix), items: 4, label: "Comfort Scale (vc, es†, fa†, sat)",    n: comfortMatrix.length },
   };
 
-  return { n: valid.length, issues, pairs, desc, tests, taskBreak, correlations, allAcc, allTT, METRICS, counterbalance, szLabel, derivedMetrics, demoSummary, reliability, insufficient: false };
+  const ALPHA_BONF = 0.05 / 11;
+
+  // ── Power analysis per test ──────────────────────────────────────────────────
+  const power = Object.fromEntries(Object.entries(tests).map(([k, t]) => {
+    if (!t?.cohensD || !pairs.length) return [k, null];
+    const pw = stat.power(t.cohensD, pairs.length, ALPHA_BONF);
+    return [k, pw != null ? +pw.toFixed(3) : null];
+  }));
+
+  // ── Wilcoxon signed-rank (non-parametric fallback) ───────────────────────────
+  const wilcoxon = Object.fromEntries(["acc","rt","err","nasa","vc","es","fa","sa"].map(k => {
+    const paired = pairs.map(p=>[p.dark[k],p.light[k]]).filter(([a,b])=>a!=null&&b!=null);
+    if (paired.length < 4) return [k, null];
+    return [k, stat.wilcoxon(paired.map(p=>p[0]), paired.map(p=>p[1]))];
+  }));
+
+  // ── Order effect check (DL vs LD independent t-test) ────────────────────────
+  const dlPairs = pairs.filter(p => {
+    const u2 = valid.find(u3 => u3.id === p.pid);
+    return u2?.orderGroup === "DL";
+  });
+  const ldPairs = pairs.filter(p => {
+    const u2 = valid.find(u3 => u3.id === p.pid);
+    return u2?.orderGroup === "LD";
+  });
+  const orderEffect = ["acc","rt","nasa"].reduce((acc2, k) => {
+    const dlVals = dlPairs.map(p => (p.dark[k]??0) - (p.light[k]??0)).filter(v=>v!=null);
+    const ldVals = ldPairs.map(p => (p.dark[k]??0) - (p.light[k]??0)).filter(v=>v!=null);
+    acc2[k] = dlVals.length >= 2 && ldVals.length >= 2 ? stat.independentT(dlVals, ldVals) : null;
+    return acc2;
+  }, {});
+
+  // ── Practice effect (Phase 1 vs Phase 2 regardless of theme) ────────────────
+  const p1Scores = valid.map(u2 => {
+    const exps2 = (u2.experiments||[]).filter(e=>(e.tasks||[]).length>0);
+    const s = exps2[0]; if (!s) return null;
+    const trials = (s.tasks||[]).flatMap(t=>t.trials||[]);
+    return trials.length ? avg(trials.map(t=>t.acc||0)) : null;
+  }).filter(v=>v!=null);
+  const p2Scores = valid.map(u2 => {
+    const exps2 = (u2.experiments||[]).filter(e=>(e.tasks||[]).length>0);
+    const s = exps2[1]; if (!s) return null;
+    const trials = (s.tasks||[]).flatMap(t=>t.trials||[]);
+    return trials.length ? avg(trials.map(t=>t.acc||0)) : null;
+  }).filter(v=>v!=null);
+  const practiceEffect = p1Scores.length >= 2 && p2Scores.length >= 2 && p1Scores.length === p2Scores.length
+    ? stat.pairedT(p1Scores, p2Scores) : null;
+
+  // ── Correlation matrix (key metrics) ────────────────────────────────────────
+  const CORR_KEYS = ["acc","rt","err","nasa","vc","es","sa"];
+  const CORR_LABELS = ["Accuracy","Resp. Time","Error Rate","NASA Total","Visual Comfort","Eye Strain","Satisfaction"];
+  const allScores = CORR_KEYS.map(k => pairs.map(p => (p.dark[k]??p.light[k])).filter(v=>v!=null));
+  const corrMatrix = CORR_KEYS.map((k1, i) => CORR_KEYS.map((k2, j) => {
+    if (i === j) return 1;
+    const a2 = pairs.map(p=>p.dark[k1]??p.light[k1]).filter(v=>v!=null);
+    const b2 = pairs.map(p=>p.dark[k2]??p.light[k2]).filter(v=>v!=null);
+    const n2 = Math.min(a2.length, b2.length);
+    return n2 >= 3 ? stat.pearson(a2.slice(0,n2), b2.slice(0,n2)) : null;
+  }));
+
+  // ── Per-task paired t-tests ──────────────────────────────────────────────────
+  const taskTests = taskBreak.map(task => {
+    const a2 = pairs.map(p => {
+      const dkTrials = (p.dark?.trials||[]).filter(t=>t.taskType===task.tid||t.task===task.tid);
+      return dkTrials.length ? avg(dkTrials.map(t=>t.acc||0)) : null;
+    }).filter(v=>v!=null);
+    const b2 = pairs.map(p => {
+      const ltTrials = (p.light?.trials||[]).filter(t=>t.taskType===task.tid||t.task===task.tid);
+      return ltTrials.length ? avg(ltTrials.map(t=>t.acc||0)) : null;
+    }).filter(v=>v!=null);
+    const n2 = Math.min(a2.length, b2.length);
+    return { tid: task.tid, label: task.label, test: n2 >= 2 ? stat.pairedT(a2.slice(0,n2), b2.slice(0,n2)) : null };
+  });
+
+  return { n: valid.length, issues, pairs, desc, tests, taskBreak, correlations, allAcc, allTT, METRICS, counterbalance, szLabel, derivedMetrics, demoSummary, reliability, power, wilcoxon, orderEffect, practiceEffect, corrMatrix, corrKeys: CORR_KEYS, corrLabels: CORR_LABELS, taskTests, insufficient: false };
 }
 
 // ─── ANALYTICS PIPELINE ──────────────────────────────────────────────────────────
@@ -3805,190 +3930,504 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
 
 // ─── ADMIN ────────────────────────────────────────────────────────────────────────
 // ─── ANALYSIS TAB ────────────────────────────────────────────────────────────────
+// ─── ANALYSIS TAB ─────────────────────────────────────────────────────────────────
 function AnalysisTab({ u, users }) {
   const [res, setRes] = useState(null);
   useEffect(() => { setRes(computeAnalysis(users)); }, [users]);
-
-  if (!res) return <div style={{ padding: L.spXl, color: u.text3, fontFamily: L.font }}>Computing…</div>;
-
+  if (!res) return <div style={{ padding:L.spXl, color:u.text3, fontFamily:L.font }}>Computing…</div>;
   if (res.insufficient) return (
-    <div className="au">
-      <h1 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: "0 0 16px" }}>Analysis</h1>
-      <Card u={u} style={{ padding: L.spXl, textAlign: "center" }}>
-        <div style={{ fontSize: 36, marginBottom: 12 }}>📊</div>
-        <div style={{ fontSize: L.fsLg, fontWeight: L.fwSemi, color: u.text, marginBottom: 8 }}>Insufficient Data</div>
-        <p style={{ color: u.text2, fontSize: L.fsSm }}>At least <strong style={{ color: u.accent }}>2 participants</strong> with complete paired data (both phases) required. Currently: <strong>{res.n} valid</strong>.</p>
+    <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }}>
+      <SectionHdr u={u} eyebrow="Analysis" title="Insufficient Data" />
+      <Card u={u} style={{ padding:L.spXl, textAlign:"center" }}>
+        <div style={{ fontSize:36, marginBottom:12 }}>📊</div>
+        <h3 style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:u.text, margin:"0 0 8px" }}>Need at least 2 complete participants</h3>
+        <p style={{ color:u.text2, fontSize:L.fsSm }}>Currently {res.n} valid participant{res.n!==1?"s":""} with both phases completed.</p>
       </Card>
     </div>
   );
 
+  const { pairs, desc, tests, taskBreak, METRICS, counterbalance: cb, szLabel: sz, allAcc, allTT, derivedMetrics, demoSummary, reliability } = res;
   const dk = u.accent2, lt = u.gold;
-  const sz = res.szLabel, cb = res.counterbalance;
-  const fv = v => v != null ? (Math.abs(v) < 10 ? v.toFixed(3) : Math.round(v)) : "—";
-  const pct = (a, b) => (a != null && b != null && b !== 0) ? `${((a - b) / Math.abs(b) * 100).toFixed(1)}%` : "—";
-  const thS = { padding: "7px 10px", fontSize: L.fsXs, fontWeight: L.fwSemi, color: u.text3, textTransform: "uppercase", letterSpacing: .4, borderBottom: `1px solid ${u.border}`, textAlign: "left" };
-  const tdS = (c) => ({ padding: "7px 10px", fontSize: L.fsSm, borderBottom: `1px solid ${u.border}`, color: c || u.text2 });
-  const dColor = d => { if (!d) return u.text3; const a = Math.abs(d); return a < 0.2 ? u.text3 : a < 0.5 ? u.teal : a < 0.8 ? u.orange : u.green; };
+  const N = pairs.length;
+  const N_TESTS = 11;
+  const ALPHA_BONF = (0.05 / N_TESTS).toFixed(4);
+  const sigCount = Object.values(tests).filter(t => t?.sig).length;
+  const margCount = Object.values(tests).filter(t => t?.marginal).length;
+  const fv = v => v == null || isNaN(v) ? "—" : Math.abs(v) >= 100 ? Math.round(v).toString() : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(3);
+  const dColor = d => d == null ? u.text3 : Math.abs(d) >= 0.8 ? u.red : Math.abs(d) >= 0.5 ? u.orange : Math.abs(d) >= 0.2 ? u.teal : u.text3;
+  const thS = { padding:"7px 10px", fontSize:L.fsXs, color:u.text3, fontWeight:L.fwSemi, background:u.fill, borderBottom:`1px solid ${u.border}`, textAlign:"left", whiteSpace:"nowrap" };
+  const tdS = c => ({ padding:"7px 10px", fontSize:L.fsXs, color:c||u.text, borderBottom:`1px solid ${u.border}`, whiteSpace:"nowrap" });
 
   const TEST_ROWS = [
-    { k:"acc",    l:"Accuracy (0–1)" },
-    { k:"tt",     l:"Completion Time (ms)" },
-    { k:"rt",     l:"Response Time (ms)" },
-    { k:"err",    l:"Error Count" },
-    { k:"nasa",   l:"NASA-TLX Score" },
-    { k:"nasFR",  l:"NASA Frustration" },
-    { k:"nasaMD", l:"NASA Mental Demand" },
-    { k:"vc",     l:"Visual Comfort" },
-    { k:"es",     l:"Eye Strain" },
-    { k:"fa",     l:"Fatigue" },
-    { k:"sa",     l:"Satisfaction" },
+    { k:"acc",    l:"Accuracy",         unit:"",     higherBetter:true  },
+    { k:"rt",     l:"Response Time",    unit:" ms",  higherBetter:false },
+    { k:"tt",     l:"Completion Time",  unit:" ms",  higherBetter:false },
+    { k:"err",    l:"Error Rate",       unit:"",     higherBetter:false },
+    { k:"nasa",   l:"NASA-TLX Total",   unit:"",     higherBetter:false },
+    { k:"nasaMD", l:"Mental Demand",    unit:"",     higherBetter:false },
+    { k:"nasFR",  l:"Frustration",      unit:"",     higherBetter:false },
+    { k:"vc",     l:"Visual Comfort",   unit:"/7",   higherBetter:true  },
+    { k:"es",     l:"Eye Strain",       unit:"/7",   higherBetter:false },
+    { k:"fa",     l:"Fatigue",          unit:"/7",   higherBetter:false },
+    { k:"sa",     l:"Satisfaction",     unit:"/7",   higherBetter:true  },
   ];
 
+  // ── Inline SVG chart helpers ──────────────────────────────────────────────────
+  const BAR_H = 28, BAR_GAP = 8, CHART_W = 220;
+
+  // Metric comparison chart
+  const MetricBars = ({ metrics }) => {
+    const rows = metrics.filter(({ k }) => desc[k]?.dark?.n && desc[k]?.light?.n);
+    const h = rows.length * (BAR_H * 2 + BAR_GAP + 12) + 16;
+    return (
+      <svg width="100%" viewBox={`0 0 ${CHART_W + 160} ${h}`} style={{ overflow:"visible" }}>
+        {rows.map(({ k, l, higherBetter }, ri) => {
+          const dm = desc[k]?.dark?.mean, lm = desc[k]?.light?.mean;
+          const mx = Math.max(dm||0, lm||0, 0.001);
+          const dw = dm != null ? Math.round((dm/mx) * CHART_W) : 0;
+          const lw = lm != null ? Math.round((lm/mx) * CHART_W) : 0;
+          const t = tests[k];
+          const dkBetter = higherBetter ? dm > lm : dm < lm;
+          const ltBetter = higherBetter ? lm > dm : lm < dm;
+          const y = ri * (BAR_H * 2 + BAR_GAP + 12) + 8;
+          const sigDot = t?.sig ? u.green : t?.marginal ? u.orange : "transparent";
+          return (
+            <g key={k}>
+              <text x={0} y={y + 10} fontSize={10} fill={u.text2} fontFamily={L.font}>{l}</text>
+              {t?.sig && <circle cx={148} cy={y + 6} r={4} fill={u.green} />}
+              {t?.marginal && !t?.sig && <circle cx={148} cy={y + 6} r={4} fill={u.orange} />}
+              {/* Dark bar */}
+              <rect x={155} y={y + 14} width={dw} height={BAR_H - 4} rx={3} fill={dk} opacity={0.85} />
+              <text x={155 + dw + 4} y={y + 27} fontSize={9} fill={dk} fontFamily={L.mono}>{fv(dm)}</text>
+              {/* Light bar */}
+              <rect x={155} y={y + BAR_H + 14} width={lw} height={BAR_H - 4} rx={3} fill={lt} opacity={0.85} />
+              <text x={155 + lw + 4} y={y + BAR_H + 27} fontSize={9} fill={lt} fontFamily={L.mono}>{fv(lm)}</text>
+            </g>
+          );
+        })}
+        {/* Legend */}
+        <rect x={155} y={h - 8} width={10} height={6} rx={2} fill={dk} />
+        <text x={168} y={h - 3} fontSize={9} fill={dk} fontFamily={L.font}>🌙 Dark</text>
+        <rect x={210} y={h - 8} width={10} height={6} rx={2} fill={lt} />
+        <text x={223} y={h - 3} fontSize={9} fill={lt} fontFamily={L.font}>☀️ Light</text>
+      </svg>
+    );
+  };
+
+  // Forest plot (effect sizes)
+  const ForestPlot = () => {
+    const rows = TEST_ROWS.filter(r => tests[r.k]?.cohensD != null);
+    if (!rows.length) return null;
+    const W = 260, H = rows.length * 26 + 40;
+    const scale = d => Math.min(Math.max((d + 1.5) / 3 * W, 0), W);
+    const zero = scale(0);
+    return (
+      <svg width="100%" viewBox={`0 0 ${W + 120} ${H}`} style={{ overflow:"visible" }}>
+        {/* Grid lines */}
+        {[-1, -0.8, -0.5, -0.2, 0, 0.2, 0.5, 0.8, 1].map(v => (
+          <line key={v} x1={120 + scale(v)} y1={0} x2={120 + scale(v)} y2={H - 30} stroke={v===0?u.text3:u.border} strokeWidth={v===0?1.5:0.5} strokeDasharray={v===0?"":"3,2"} />
+        ))}
+        {rows.map(({ k, l }, ri) => {
+          const t = tests[k];
+          const d = t.cohensD;
+          const ci = t.ci95;
+          const y = ri * 26 + 16;
+          const xd = 120 + scale(d);
+          const ciL = ci ? 120 + scale(Math.max(-1.5, ci.lower)) : xd - 10;
+          const ciR = ci ? 120 + scale(Math.min(1.5, ci.upper)) : xd + 10;
+          const col = t.sig ? u.green : t.marginal ? u.orange : u.text3;
+          return (
+            <g key={k}>
+              <text x={115} y={y + 4} fontSize={10} fill={u.text2} textAnchor="end" fontFamily={L.font}>{l}</text>
+              <line x1={ciL} y1={y} x2={ciR} y2={y} stroke={col} strokeWidth={1.5} />
+              <line x1={ciL} y1={y - 4} x2={ciL} y2={y + 4} stroke={col} strokeWidth={1.5} />
+              <line x1={ciR} y1={y - 4} x2={ciR} y2={y + 4} stroke={col} strokeWidth={1.5} />
+              <rect x={xd - 5} y={y - 5} width={10} height={10} rx={2} fill={col} />
+              <text x={120 + scale(d) + 14} y={y + 4} fontSize={9} fill={col} fontFamily={L.mono}>{d > 0 ? "+" : ""}{d}</text>
+            </g>
+          );
+        })}
+        {/* X axis labels */}
+        {[-1, -0.5, 0, 0.5, 1].map(v => (
+          <text key={v} x={120 + scale(v)} y={H - 10} fontSize={9} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{v}</text>
+        ))}
+        <text x={120 + zero} y={H - 2} fontSize={8} fill={u.text3} textAnchor="middle" fontFamily={L.font}>← Light better · 0 · Dark better →</text>
+      </svg>
+    );
+  };
+
+  // Individual scatter (dark vs light per participant)
+  const ScatterPlot = ({ metric, label }) => {
+    const pts = pairs.map(p => ({ x: p.dark[metric], y: p.light[metric], name: p.name })).filter(p => p.x != null && p.y != null);
+    if (pts.length < 2) return null;
+    const allV = pts.flatMap(p => [p.x, p.y]);
+    const mn = Math.min(...allV), mx = Math.max(...allV);
+    const range = mx - mn || 1;
+    const PAD = 28, SZ = 170;
+    const sc = v => PAD + ((v - mn) / range) * (SZ - PAD * 2);
+    return (
+      <svg width={SZ} height={SZ} viewBox={`0 0 ${SZ} ${SZ}`} style={{ overflow:"visible" }}>
+        {/* Diagonal equality line */}
+        <line x1={PAD} y1={SZ - PAD} x2={SZ - PAD} y2={PAD} stroke={u.border} strokeWidth={1} strokeDasharray="4,2" />
+        {pts.map((p, i) => (
+          <g key={i}>
+            <circle cx={sc(p.x)} cy={SZ - sc(p.y)} r={5} fill={p.x > p.y ? dk : lt} opacity={0.8} />
+            {pts.length <= 8 && <text x={sc(p.x) + 6} y={SZ - sc(p.y) + 3} fontSize={8} fill={u.text3} fontFamily={L.font}>{p.name?.split(" ")[0]}</text>}
+          </g>
+        ))}
+        {/* Axes */}
+        <line x1={PAD} y1={SZ - PAD} x2={SZ - 8} y2={SZ - PAD} stroke={u.text3} strokeWidth={1} />
+        <line x1={PAD} y1={SZ - PAD} x2={PAD} y2={8} stroke={u.text3} strokeWidth={1} />
+        <text x={SZ / 2} y={SZ - 4} fontSize={8} fill={dk} textAnchor="middle" fontFamily={L.font}>🌙 Dark</text>
+        <text x={10} y={SZ / 2} fontSize={8} fill={lt} textAnchor="middle" transform={`rotate(-90 10 ${SZ/2})`} fontFamily={L.font}>☀️ Light</text>
+        <text x={SZ / 2} y={12} fontSize={9} fill={u.text} textAnchor="middle" fontWeight="bold" fontFamily={L.font}>{label}</text>
+      </svg>
+    );
+  };
+
+  // Per-task grouped bar
+  const TaskBars = () => {
+    const tasks = taskBreak.filter(t => t.dark?.n > 0 || t.light?.n > 0);
+    if (!tasks.length) return null;
+    const W2 = 340, BW = 12, GAP = 4;
+    const groupW = BW * 2 + GAP + 16;
+    const totalW = tasks.length * groupW + 40;
+    const maxV = 1;
+    const H2 = 120;
+    return (
+      <svg width="100%" viewBox={`0 0 ${totalW} ${H2 + 30}`} style={{ overflow:"visible" }}>
+        {/* Grid */}
+        {[0, 0.25, 0.5, 0.75, 1].map(v => (
+          <g key={v}>
+            <line x1={30} y1={H2 - v * H2} x2={totalW} y2={H2 - v * H2} stroke={u.border} strokeWidth={0.5} />
+            <text x={28} y={H2 - v * H2 + 3} fontSize={8} fill={u.text3} textAnchor="end" fontFamily={L.mono}>{Math.round(v*100)}%</text>
+          </g>
+        ))}
+        {tasks.map((task, ti) => {
+          const x = 36 + ti * groupW;
+          const dh = (task.dark?.mean || 0) * H2;
+          const lh = (task.light?.mean || 0) * H2;
+          return (
+            <g key={task.tid}>
+              <rect x={x} y={H2 - dh} width={BW} height={dh} rx={2} fill={dk} opacity={0.85} />
+              <rect x={x + BW + GAP} y={H2 - lh} width={BW} height={lh} rx={2} fill={lt} opacity={0.85} />
+              <text x={x + BW} y={H2 + 12} fontSize={8} fill={u.text2} textAnchor="middle" fontFamily={L.font}>{task.label?.split(" ")[0]}</text>
+            </g>
+          );
+        })}
+        {/* Legend */}
+        <rect x={36} y={H2 + 22} width={8} height={6} rx={1} fill={dk} />
+        <text x={46} y={H2 + 28} fontSize={8} fill={dk} fontFamily={L.font}>Dark</text>
+        <rect x={76} y={H2 + 22} width={8} height={6} rx={1} fill={lt} />
+        <text x={86} y={H2 + 28} fontSize={8} fill={lt} fontFamily={L.font}>Light</text>
+      </svg>
+    );
+  };
+
+  // NASA radar
+  const NASA_DIMS = ["md","pd","td","pe","ef","fr"];
+  const NASA_LABELS = ["Mental","Physical","Temporal","Performance","Effort","Frustration"];
+  const NasaRadar = () => {
+    const dkNasa = pairs.map(p=>p.dark.nasa).filter(v=>v!=null);
+    const ltNasa = pairs.map(p=>p.light.nasa).filter(v=>v!=null);
+    if (!dkNasa.length || !ltNasa.length) return null;
+    const dims = NASA_DIMS.map((k, i) => ({
+      l: NASA_LABELS[i],
+      dk: avg(pairs.map(p=>p.dark[`nasa${k.toUpperCase()}`]||p.dark[`nasa${k==="md"?"MD":k==="pd"?"PD":k==="td"?"TD":k==="pe"?"PE":k==="ef"?"EF":"FR"}`]).filter(v=>v!=null)) / 20,
+      lt: avg(pairs.map(p=>p.light[`nasa${k.toUpperCase()}`]||p.light[`nasa${k==="md"?"MD":k==="pd"?"PD":k==="td"?"TD":k==="pe"?"PE":k==="ef"?"EF":"FR"}`]).filter(v=>v!=null)) / 20,
+    }));
+    const cx=90, cy=90, r=68, n=6;
+    const pt = (val, idx) => {
+      const a = (idx / n) * Math.PI * 2 - Math.PI / 2;
+      return [cx + Math.cos(a) * r * val, cy + Math.sin(a) * r * val];
+    };
+    const mkPath = vals => vals.map((v, i) => { const [x, y] = pt(v, i); return `${i===0?"M":"L"}${x},${y}`; }).join(" ") + "Z";
+    return (
+      <svg width={180} height={180} viewBox="0 0 180 180">
+        {[0.25,0.5,0.75,1].map(v => (
+          <polygon key={v} points={Array.from({length:n},(_,i)=>{const[x,y]=pt(v,i);return`${x},${y}`;}).join(" ")} fill="none" stroke={u.border} strokeWidth={0.5} />
+        ))}
+        {Array.from({length:n},(_,i)=>{const[x,y]=pt(1,i);return<line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke={u.border} strokeWidth={0.5} />;  })}
+        <path d={mkPath(dims.map(d=>d.dk))} fill={`${dk}28`} stroke={dk} strokeWidth={1.5} />
+        <path d={mkPath(dims.map(d=>d.lt))} fill={`${lt}28`} stroke={lt} strokeWidth={1.5} />
+        {dims.map((d,i)=>{const a=(i/n)*Math.PI*2-Math.PI/2;const lx=cx+Math.cos(a)*(r+14);const ly=cy+Math.sin(a)*(r+14);return<text key={i} x={lx} y={ly+3} fontSize={8} fill={u.text2} textAnchor="middle" fontFamily={L.font}>{d.l}</text>;})}
+      </svg>
+    );
+  };
+
+  // Summary bullets
+  const summaryFindings = TEST_ROWS.filter(r => tests[r.k]?.sig).map(r => {
+    const t = tests[r.k], dm = desc[r.k]?.dark?.mean, lm = desc[r.k]?.light?.mean;
+    const better = r.higherBetter ? (dm > lm ? "Dark" : "Light") : (dm < lm ? "Dark" : "Light");
+    return `${r.l}: ${better} mode better (d=${t.cohensD}, p=${t.p?.toFixed(4)})`;
+  });
+
   return (
-    <div className="au" style={{ fontFamily: L.font }}>
+    <div className="au" style={{ fontFamily:L.font }}>
       {/* ── Header ── */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: "0 0 6px" }}>Analysis</h1>
-        <div style={{ display: "flex", gap: L.spSm, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ fontSize: L.fsSm, color: u.text2 }}>{res.n} valid participants · {res.pairs.length} complete pairs</span>
-          <span style={{ padding: "2px 10px", borderRadius: R.pill, fontSize: L.fsXs, fontWeight: L.fwBold, background: `${u[sz.c]}18`, color: u[sz.c], border: `1px solid ${u[sz.c]}30` }}>{sz.l} Sample</span>
-          {sz.preliminary && <span style={{ padding: "2px 10px", borderRadius: R.pill, fontSize: L.fsXs, fontWeight: L.fwBold, background: `${u.orange}18`, color: u.orange, border: `1px solid ${u.orange}30` }}>⚠ PRELIMINARY</span>}
-        </div>
-        <p style={{ fontSize: L.fsSm, color: u.text3, marginTop: 6, lineHeight: 1.6 }}>{sz.note}</p>
-      </div>
+      <SectionHdr u={u} eyebrow="Statistical Analysis" title="Within-Subjects Analysis"
+        sub={`Paired-samples t-tests with Bonferroni correction (α = ${ALPHA_BONF}) · ${N} complete pairs · ${sigCount} significant · ${margCount} marginal`} />
 
-      {/* ── Demographics Summary ── */}
-      {res.demoSummary && (() => {
-        const dm = res.demoSummary;
-        const FreqBar = ({ rows, color }) => (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {rows.map(({ l, n, pct }) => (
-              <div key={l} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: L.fsXs, color: u.text2, width: 170, flexShrink: 0, lineHeight: 1.3 }}>{l}</span>
-                <div style={{ flex: 1, height: 16, background: u.fill, borderRadius: 99, overflow: "hidden", border: `1px solid ${u.border}` }}>
-                  <div style={{ height: "100%", width: `${pct}%`, background: color || u.accent, borderRadius: 99, transition: "width .7s" }} />
-                </div>
-                <span style={{ fontSize: L.fsXs, color: u.text2, width: 48, textAlign: "right", fontFamily: L.mono }}>{pct}%</span>
-                <span style={{ fontSize: L.fsXs, color: u.text3, width: 24 }}>({n})</span>
-              </div>
-            ))}
-          </div>
-        );
-        return (
-          <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
-            <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text, marginBottom: 4 }}>Sample Demographics</div>
-            <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: L.spLg }}>N = {dm.n} participants with complete experimental data</div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:L.spXl }}>
-              <div>
-                {dm.age && (
-                  <div style={{ marginBottom: L.spLg }}>
-                    <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>Age</div>
-                    <div style={{ display: "flex", gap: L.spMd, flexWrap: "wrap" }}>
-                      {[{ l:"Mean", v:`${dm.age.mean} yrs` },{ l:"Median", v:`${dm.age.median} yrs` },{ l:"SD", v:`${dm.age.sd}` },{ l:"Range", v:`${dm.age.min}–${dm.age.max}` }].map(({ l, v }) => (
-                        <div key={l} style={{ padding: "6px 10px", background: u.fill, borderRadius: R.md, border: `1px solid ${u.border}` }}>
-                          <div style={{ fontSize: L.fsXs, color: u.text3 }}>{l}</div>
-                          <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text }}>{v}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div style={{ marginBottom: L.spLg }}>
-                  <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>Gender</div>
-                  <FreqBar rows={dm.gender} color={u.accent} />
-                </div>
-                <div>
-                  <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>Education Level</div>
-                  <FreqBar rows={dm.edu} color={u.teal} />
-                </div>
-              </div>
-              <div>
-                <div style={{ marginBottom: L.spLg }}>
-                  <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>Computer Proficiency</div>
-                  <FreqBar rows={dm.proficiency} color={u.green} />
-                </div>
-                <div style={{ marginBottom: L.spLg }}>
-                  <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>Dark Mode Usage</div>
-                  <FreqBar rows={dm.darkMode} color={u.accent2} />
-                  {(() => {
-                    const heavy = dm.darkMode.filter(r => r.l === "Always" || r.l === "Often (daily)").reduce((s, r) => s + r.pct, 0);
-                    if (heavy > 0) return <div style={{ fontSize: L.fsXs, color: u.accent2, marginTop: 6 }}>{heavy.toFixed(0)}% of participants reported frequent dark mode use (Often or Always)</div>;
-                  })()}
-                </div>
-                <div>
-                  <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>Daily Screen Time</div>
-                  <FreqBar rows={dm.screenTime} color={u.gold} />
-                </div>
-              </div>
+      {/* ── Executive Summary ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16, background:u.gradSoft, border:`1px solid ${u.accent}20` }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:L.spMd }}>Executive Summary</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))", gap:L.spMd, marginBottom:L.spMd }}>
+          {[
+            { l:"Participants", v:N, c:u.accent },
+            { l:"Significant Tests", v:`${sigCount}/11`, c:u.green },
+            { l:"Marginal Tests", v:`${margCount}/11`, c:u.orange },
+            { l:"Bonferroni α", v:ALPHA_BONF, c:u.teal },
+          ].map(({ l, v, c }) => (
+            <div key={l} style={{ padding:L.spMd, background:u.bg, borderRadius:R.md, textAlign:"center", border:`1px solid ${u.border}` }}>
+              <div style={{ fontSize:20, fontWeight:L.fwBlack, color:c, fontFamily:L.mono }}>{v}</div>
+              <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>{l}</div>
             </div>
-          </Card>
-        );
-      })()}
-
-      {/* ── Data Quality ── */}
-      {res.issues.length > 0 && (
-        <Card u={u} style={{ padding: L.spMd, marginBottom: 16, border: `1px solid ${u.orange}30`, background: `${u.orange}06` }}>
-          <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.orange, marginBottom: 8 }}>⚠ Data Quality — {res.issues.length} issue{res.issues.length !== 1 ? "s" : ""}</div>
-          {res.issues.map((iss, i) => <div key={i} style={{ fontSize: L.fsXs, color: u.text2, display: "flex", gap: 8, marginBottom: 3 }}><span style={{ color: iss.type === "excluded" ? u.red : u.orange, flexShrink: 0 }}>{iss.type === "excluded" ? "Excluded" : "⚠"}</span><span><strong>{iss.name}</strong> — {iss.msg}</span></div>)}
-        </Card>
-      )}
-
-      {/* ── Counterbalance Validation ── */}
-      <Card u={u} style={{ padding: L.spMd, marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text }}>Counterbalance Validation</div>
-            <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>Dark→Light (DL) vs Light→Dark (LD) group distribution</div>
-          </div>
-          <div style={{ display: "flex", gap: L.spMd, alignItems: "center" }}>
-            {[{ l:"DL Group", v:cb.dl, c:dk }, { l:"LD Group", v:cb.ld, c:lt }].map(({ l, v, c }) => (
-              <div key={l} style={{ textAlign: "center", padding: "8px 16px", borderRadius: R.md, background: `${c}12`, border: `1px solid ${c}22` }}>
-                <div style={{ fontSize: L.fsXs, color: u.text3 }}>{l}</div>
-                <div style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: c }}>{v}</div>
-              </div>
-            ))}
-            <span style={{ padding: "3px 12px", borderRadius: R.pill, fontSize: L.fsSm, fontWeight: L.fwSemi, background: cb.balanced ? `${u.green}14` : `${u.orange}14`, color: cb.balanced ? u.green : u.orange, border: `1px solid ${cb.balanced ? u.green : u.orange}28` }}>
-              {cb.balanced ? `✓ Balanced (${cb.ratio})` : `⚠ Imbalanced (${cb.ratio})`}
-            </span>
-          </div>
+          ))}
         </div>
-        {!cb.balanced && <p style={{ fontSize: L.fsXs, color: u.orange, marginTop: 8 }}>Counterbalance imbalance detected. Order effects may confound theme comparisons. Report this as a limitation.</p>}
+        {summaryFindings.length > 0 ? (
+          <div style={{ fontSize:L.fsSm, color:u.text2, lineHeight:1.8 }}>
+            <strong style={{ color:u.text }}>Significant findings: </strong>
+            {summaryFindings.map((s,i) => <span key={i}>{s}{i < summaryFindings.length-1 ? " · " : ""}</span>)}
+          </div>
+        ) : (
+          <div style={{ fontSize:L.fsSm, color:u.text3 }}>No tests reached Bonferroni-corrected significance. Effect sizes (Cohen's d) and confidence intervals provide the most informative interpretation at this sample size.</div>
+        )}
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spSm }}>
+          Sample adequacy: <strong style={{ color:u[sz.c]||u.text }}>{sz.l}</strong>
+          {sz.preliminary ? " — findings are preliminary. Interpret effect sizes, not p-values." : " — sufficient for paired t-tests."}
+        </div>
       </Card>
 
-      {/* ── Descriptive Statistics ── */}
-      <Card u={u} style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}>
-        <div style={{ padding: `${L.spMd}px ${L.spLg}px`, borderBottom: `1px solid ${u.border}` }}>
-          <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text }}>Descriptive Statistics</div>
-          <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>Mean · Median · SD · Min · Max by theme condition</div>
+      {/* ── Design & Counterbalance ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:L.spMd, marginBottom:16 }}>
+        <Card u={u} style={{ padding:L.spLg }}>
+          <div style={{ fontSize:L.fsSm, fontWeight:L.fwBold, color:u.text, marginBottom:L.spMd }}>Study Design</div>
+          {[
+            { l:"Design", v:"Within-subjects, counterbalanced" },
+            { l:"Phases", v:"2 (Dark mode + Light mode)" },
+            { l:"Tasks per phase", v:"8 cognitive tasks" },
+            { l:"Counterbalance", v:cb.balanced ? `✓ Balanced ${cb.ratio}` : `⚠ Imbalanced ${cb.ratio}` },
+            { l:"DL Group", v:cb.dl },
+            { l:"LD Group", v:cb.ld },
+          ].map(({ l, v }) => (
+            <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${u.border}`, fontSize:L.fsXs }}>
+              <span style={{ color:u.text3 }}>{l}</span>
+              <span style={{ color:u.text, fontWeight:L.fwSemi }}>{v}</span>
+            </div>
+          ))}
+          {!cb.balanced && <div style={{ fontSize:L.fsXs, color:u.orange, marginTop:8 }}>⚠ Order effects may confound comparisons. Report as limitation.</div>}
+        </Card>
+        {demoSummary && (
+          <Card u={u} style={{ padding:L.spLg }}>
+            <div style={{ fontSize:L.fsSm, fontWeight:L.fwBold, color:u.text, marginBottom:L.spMd }}>Participant Demographics</div>
+            {[
+              { l:"n", v:demoSummary.n },
+              { l:"Mean age", v:demoSummary.age ? `${demoSummary.age.mean} ± ${demoSummary.age.sd}` : "—" },
+              { l:"Age range", v:demoSummary.age ? `${demoSummary.age.min}–${demoSummary.age.max}` : "—" },
+              { l:"Gender", v:(demoSummary.gender||[]).map(g=>`${g.l} (${g.n})`).join(", ") || "—" },
+              { l:"Education", v:(demoSummary.edu||[]).slice(0,2).map(e=>e.l).join(", ") || "—" },
+            ].map(({ l, v }) => (
+              <div key={l} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${u.border}`, fontSize:L.fsXs }}>
+                <span style={{ color:u.text3 }}>{l}</span>
+                <span style={{ color:u.text, fontWeight:L.fwSemi, textAlign:"right", maxWidth:160 }}>{v}</span>
+              </div>
+            ))}
+          </Card>
+        )}
+      </div>
+
+      {/* ── Visual Comparison ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Metric Comparison — Dark vs Light</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
+          <span style={{ color:u.green }}>●</span> Significant &nbsp; <span style={{ color:u.orange }}>●</span> Marginal &nbsp; bars show group means
         </div>
-          <div className="tbl-wrap">
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:L.spLg }}>
+          <div>
+            <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:8, fontWeight:L.fwSemi }}>Performance Metrics</div>
+            <MetricBars metrics={[
+              { k:"acc", l:"Accuracy", higherBetter:true },
+              { k:"rt",  l:"Resp. Time (ms)", higherBetter:false },
+              { k:"err", l:"Error Rate", higherBetter:false },
+            ]} />
+          </div>
+          <div>
+            <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:8, fontWeight:L.fwSemi }}>Subjective Measures</div>
+            <MetricBars metrics={[
+              { k:"nasa", l:"NASA-TLX", higherBetter:false },
+              { k:"vc",   l:"Visual Comfort", higherBetter:true },
+              { k:"es",   l:"Eye Strain", higherBetter:false },
+              { k:"sa",   l:"Satisfaction", higherBetter:true },
+            ]} />
+          </div>
+        </div>
+      </Card>
+
+      {/* ── Scatter Plots ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Individual Participant Data</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Each point = one participant. Above diagonal = Light better. Below = Dark better.</div>
+        <div style={{ display:"flex", gap:L.spLg, flexWrap:"wrap", justifyContent:"center" }}>
+          <ScatterPlot metric="acc" label="Accuracy" />
+          <ScatterPlot metric="rt" label="Response Time" />
+          <ScatterPlot metric="nasa" label="NASA-TLX" />
+        </div>
+      </Card>
+
+      {/* ── Effect Size Forest Plot ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Effect Size Forest Plot (Cohen's d)</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
+          Squares = point estimate · Whiskers = 95% CI · d &gt; 0 = Dark better · d &lt; 0 = Light better<br />
+          Thresholds: small ±0.2 · medium ±0.5 · large ±0.8
+        </div>
+        <ForestPlot />
+      </Card>
+
+      {/* ── Per-Task Chart ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Per-Task Accuracy by Theme</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Mean accuracy per task for dark (🌙) and light (☀️) conditions</div>
+        <div className="tbl-wrap"><TaskBars /></div>
+        {/* Per-task table */}
+        <div className="tbl-wrap" style={{ marginTop:L.spMd }}>
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>
+              {["Task","🌙 Dark Mean","🌙 Dark SD","☀️ Light Mean","☀️ Light SD","Δ Mean","n"].map(h => <th key={h} style={thS}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {taskBreak.filter(t=>t.dark?.n>0||t.light?.n>0).map(task => {
+                const diff = task.dark?.mean != null && task.light?.mean != null ? task.dark.mean - task.light.mean : null;
+                return (
+                  <tr key={task.tid}>
+                    <td style={tdS(u.text)}>{task.label}</td>
+                    <td style={{ ...tdS(dk), fontFamily:L.mono }}>{fv(task.dark?.mean)}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{fv(task.dark?.sd)}</td>
+                    <td style={{ ...tdS(lt), fontFamily:L.mono }}>{fv(task.light?.mean)}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{fv(task.light?.sd)}</td>
+                    <td style={tdS(diff!=null?(diff>0?u.green:u.red):u.text3)}>{diff!=null?((diff>0?"+":"")+fv(diff)):"—"}</td>
+                    <td style={tdS(u.text3)}>{Math.max(task.dark?.n||0, task.light?.n||0)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* ── NASA-TLX ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>NASA-TLX Workload Comparison</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Radar shows mean scores per dimension (scale 0–20, normalised to 0–1)</div>
+        <div style={{ display:"flex", gap:L.spLg, flexWrap:"wrap", alignItems:"flex-start" }}>
+          <NasaRadar />
+          <div style={{ flex:1, minWidth:200 }}>
+            {[{k:"nasaMD",l:"Mental Demand"},{k:"nasaPD",l:"Physical Demand"},{k:"nasaTD",l:"Temporal Demand"},{k:"nasaPE",l:"Performance"},{k:"nasaEF",l:"Effort"},{k:"nasFR",l:"Frustration"},{k:"nasa",l:"Total Score"}].map(({ k, l }) => {
+              const d = desc[k]; if (!d?.dark?.n) return null;
+              const dm = d.dark.mean, lm = d.light.mean;
+              const t = tests[k];
+              return (
+                <div key={k} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                  <div style={{ width:110, fontSize:L.fsXs, color:u.text2 }}>{l}</div>
+                  <div style={{ flex:1, height:8, background:u.fill, borderRadius:99, overflow:"hidden", position:"relative" }}>
+                    {dm!=null && <div style={{ position:"absolute", left:0, height:"100%", width:`${(dm/20)*100}%`, background:dk, borderRadius:99, opacity:.8 }} />}
+                  </div>
+                  <span style={{ fontSize:L.fsXs, color:dk, fontFamily:L.mono, width:28, textAlign:"right" }}>{fv(dm)}</span>
+                  <div style={{ flex:1, height:8, background:u.fill, borderRadius:99, overflow:"hidden", position:"relative" }}>
+                    {lm!=null && <div style={{ position:"absolute", left:0, height:"100%", width:`${(lm/20)*100}%`, background:lt, borderRadius:99, opacity:.8 }} />}
+                  </div>
+                  <span style={{ fontSize:L.fsXs, color:lt, fontFamily:L.mono, width:28 }}>{fv(lm)}</span>
+                  {t?.sig && <span style={{ fontSize:10, color:u.green }}>★</span>}
+                  {t?.marginal && !t?.sig && <span style={{ fontSize:10, color:u.orange }}>~</span>}
+                </div>
+              );
+            })}
+            <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:8 }}>Left bars 🌙 Dark · Right bars ☀️ Light · Scale: 0–20</div>
+          </div>
+        </div>
+      </Card>
+
+      {/* ── Full Statistical Table ── */}
+      <Card u={u} style={{ padding:0, marginBottom:16, overflow:"hidden" }}>
+        <div style={{ padding:`${L.spMd}px ${L.spLg}px`, borderBottom:`1px solid ${u.border}` }}>
+          <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text }}>Full Statistical Test Results</div>
+          <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Paired-samples t-tests · Bonferroni-corrected α = {ALPHA_BONF} · n = {N} pairs</div>
+        </div>
+        <div className="tbl-wrap">
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead>
+              <tr>{["Variable","🌙 Mean","🌙 SD","☀️ Mean","☀️ SD","Δ Mean","95% CI","t(df)","p (raw)","p (Bonf.)","d","Effect","Result"].map(h => <th key={h} style={thS}>{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {TEST_ROWS.filter(r => desc[r.k]?.dark?.n || desc[r.k]?.light?.n).map(({ k, l, higherBetter }) => {
+                const d = desc[k]; const t = tests[k];
+                if (!d) return null;
+                const dm = d.dark?.mean, lm = d.light?.mean;
+                const dsd = d.dark?.sd, lsd = d.light?.sd;
+                const diff = dm!=null&&lm!=null ? dm-lm : null;
+                const pAdj = t?.p != null ? Math.min(1, t.p * N_TESTS) : null;
+                const sigCol = t?.sig ? u.green : t?.marginal ? u.orange : u.text3;
+                const sigBg = t?.sig ? `${u.green}18` : t?.marginal ? `${u.orange}18` : u.fill;
+                const sigLabel = t?.sig ? "★ Significant" : t?.marginal ? "~ Marginal" : "n.s.";
+                const better = diff!=null ? (higherBetter ? (diff>0?"Dark":"Light") : (diff<0?"Dark":"Light")) : null;
+                return (
+                  <tr key={k} style={{ background:t?.sig?`${u.green}06`:t?.marginal?`${u.orange}04`:"transparent" }}>
+                    <td style={tdS(u.text)}><strong>{l}</strong></td>
+                    <td style={{ ...tdS(dk), fontFamily:L.mono }}>{fv(dm)}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{fv(dsd)}</td>
+                    <td style={{ ...tdS(lt), fontFamily:L.mono }}>{fv(lm)}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{fv(lsd)}</td>
+                    <td style={tdS(diff!=null?(higherBetter?(diff>0?u.green:u.red):(diff<0?u.green:u.red)):u.text3)}>{diff!=null?((diff>0?"+":"")+fv(diff)):"—"}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono, fontSize:10 }}>{t?.ci95?`[${fv(t.ci95.lower)},${fv(t.ci95.upper)}]`:"—"}</td>
+                    <td style={{ ...tdS(u.teal), fontFamily:L.mono }}>{t?`${t.t}(${t.df})`:"—"}</td>
+                    <td style={{ ...tdS(t?.p<0.05?u.orange:u.text3), fontFamily:L.mono }}>{t?.p?.toFixed(4)||"—"}</td>
+                    <td style={{ ...tdS(sigCol), fontFamily:L.mono, fontWeight:t?.sig?L.fwBold:"normal" }}>{pAdj?.toFixed(4)||"—"}</td>
+                    <td style={{ ...tdS(dColor(t?.cohensD)), fontFamily:L.mono }}>{t?.cohensD!=null?((t.cohensD>0?"+":"")+t.cohensD):"—"}</td>
+                    <td style={tdS(dColor(t?.cohensD))}>{t?.cohenLabel||"—"}</td>
+                    <td><span style={{ padding:"2px 8px", borderRadius:R.pill, fontSize:L.fsXs, fontWeight:L.fwBold, background:sigBg, color:sigCol, border:`1px solid ${sigCol}28`, whiteSpace:"nowrap" }}>{sigLabel}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ padding:`${L.spSm}px ${L.spLg}px`, fontSize:L.fsXs, color:u.text3, borderTop:`1px solid ${u.border}`, lineHeight:1.7 }}>
+          <strong style={{ color:u.text2 }}>Bonferroni correction:</strong> {N_TESTS} simultaneous tests · adjusted α = 0.05 ÷ {N_TESTS} = <strong style={{ color:u.accent }}>{ALPHA_BONF}</strong>
+          &nbsp;·&nbsp; <span style={{ color:u.green }}>★ Significant</span> p(Bonf.) &lt; {ALPHA_BONF}
+          &nbsp;·&nbsp; <span style={{ color:u.orange }}>~ Marginal</span> {ALPHA_BONF} ≤ p &lt; 0.05
+          &nbsp;·&nbsp; Δ Mean = Dark − Light · positive = Dark higher
+          {sz.preliminary && <>&nbsp;·&nbsp; <span style={{ color:u.orange }}>† Preliminary (n={res.n}): effect size (d) more reliable than p-values</span></>}
+        </div>
+      </Card>
+
+      {/* ── Descriptive Stats Table ── */}
+      <Card u={u} style={{ padding:0, marginBottom:16, overflow:"hidden" }}>
+        <div style={{ padding:`${L.spMd}px ${L.spLg}px`, borderBottom:`1px solid ${u.border}` }}>
+          <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text }}>Descriptive Statistics</div>
+          <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Mean · SD · Median · Min · Max by condition</div>
+        </div>
+        <div className="tbl-wrap">
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
                 <th style={thS}>Variable</th>
-                <th style={{ ...thS, color: dk }} colSpan={5}>🌙 Dark Mode</th>
-                <th style={{ ...thS, color: lt }} colSpan={5}>☀️ Light Mode</th>
-                <th style={thS}>Δ Mean</th>
-                <th style={thS}>95% CI</th>
+                <th style={{ ...thS, color:dk }} colSpan={5}>🌙 Dark Mode</th>
+                <th style={{ ...thS, color:lt }} colSpan={5}>☀️ Light Mode</th>
               </tr>
               <tr>
                 <th style={thS}></th>
-                {["Mean","Median","SD","Min","Max","Mean","Median","SD","Min","Max"].map((h, i) => <th key={i} style={{ ...thS, color: i < 5 ? dk : lt }}>{h}</th>)}
-                <th style={thS}></th>
-                <th style={thS}></th>
+                {["Mean","SD","Median","Min","Max","Mean","SD","Median","Min","Max"].map((h,i) => <th key={i} style={{ ...thS, color:i<5?dk:lt }}>{h}</th>)}
               </tr>
             </thead>
             <tbody>
               {TEST_ROWS.map(({ k, l }) => {
-                const d = res.desc[k]; if (!d || (!d.dark.n && !d.light.n)) return null;
-                const test = res.tests[k];
-                const diff = d.dark.mean != null && d.light.mean != null ? d.dark.mean - d.light.mean : null;
+                const d = desc[k]; if (!d?.dark?.n && !d?.light?.n) return null;
                 return (
                   <tr key={k}>
                     <td style={tdS(u.text)}>{l}</td>
-                    {[d.dark, d.light].map((s, si) => ["mean","median","sd","min","max"].map(m => <td key={si+m} style={tdS(si === 0 ? dk : lt)}>{fv(s[m])}</td>))}
-                    <td style={tdS(diff != null ? (diff > 0 ? u.green : u.red) : u.text3)}>{diff != null ? (diff > 0 ? "+" : "") + fv(diff) : "—"}</td>
-                    <td style={{ ...tdS(u.text3), fontFamily: L.mono, fontSize: L.fsXs }}>{test?.ci95 ? `[${fv(test.ci95.lower)}, ${fv(test.ci95.upper)}]` : "—"}</td>
+                    {[d.dark, d.light].map((s, si) => ["mean","sd","median","min","max"].map(m => (
+                      <td key={si+m} style={{ ...tdS(si===0?dk:lt), fontFamily:L.mono }}>{fv(s?.[m])}</td>
+                    )))}
                   </tr>
                 );
               })}
@@ -3997,253 +4436,268 @@ function AnalysisTab({ u, users }) {
         </div>
       </Card>
 
-      {/* ── Paired t-Tests ── */}
-      <Card u={u} style={{ padding: 0, marginBottom: 16, overflow: "hidden" }}>
-        <div style={{ padding: `${L.spMd}px ${L.spLg}px`, borderBottom: `1px solid ${u.border}` }}>
-          <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text }}>Paired Sample t-Tests</div>
-          <div style={{ fontSize: L.fsXs, color: u.text3, marginTop: 3 }}>Within-subjects Dark vs Light · α = 0.05 · Cohen's d · 95% CI · Normality (Jarque-Bera)</div>
+      {/* ── Reliability ── */}
+      {Object.keys(reliability).length > 0 && (
+        <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+          <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Reliability — Cronbach's α</div>
+          <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Internal consistency · α ≥ 0.70 acceptable · α ≥ 0.80 good · α ≥ 0.90 excellent</div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:L.spMd }}>
+            {Object.values(reliability).map(rel => {
+              const col = rel.alpha == null ? u.text3 : rel.alpha >= 0.9 ? u.green : rel.alpha >= 0.8 ? u.teal : rel.alpha >= 0.7 ? u.orange : u.red;
+              const label = rel.alpha == null ? "N/A" : rel.alpha >= 0.9 ? "Excellent" : rel.alpha >= 0.8 ? "Good" : rel.alpha >= 0.7 ? "Acceptable" : "Poor";
+              return (
+                <div key={rel.label} style={{ padding:L.spLg, background:u.fill, borderRadius:R.lg, border:`1px solid ${u.border}` }}>
+                  <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, marginBottom:4 }}>{rel.label}</div>
+                  <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>k={rel.items} items · n={rel.n}</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:L.spMd }}>
+                    <div style={{ fontSize:28, fontWeight:L.fwBold, color:col, fontFamily:L.mono }}>{rel.alpha ?? "—"}</div>
+                    <span style={{ padding:"2px 8px", borderRadius:R.pill, fontSize:L.fsXs, fontWeight:L.fwBold, background:`${col}18`, color:col, border:`1px solid ${col}28` }}>{label}</span>
+                  </div>
+                  {rel.alpha != null && <div style={{ height:5, background:u.border, borderRadius:99, overflow:"hidden", marginTop:8 }}><div style={{ height:"100%", width:`${rel.alpha*100}%`, background:col, borderRadius:99 }} /></div>}
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {/* ── Box Plots ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Distribution Plots</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Box plots showing spread and median across participants</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))", gap:L.spMd }}>
+          <div><div style={{ fontSize:L.fsSm, color:u.text2, marginBottom:8 }}>Accuracy Distribution</div><BoxPlotSVG u={u} yLabel="Accuracy" datasets={[{ label:"🌙 Dark", data:allAcc.dark, color:dk }, { label:"☀️ Light", data:allAcc.light, color:lt }]} /></div>
+          <div><div style={{ fontSize:L.fsSm, color:u.text2, marginBottom:8 }}>Completion Time Distribution</div><BoxPlotSVG u={u} yLabel="Time (ms)" datasets={[{ label:"🌙 Dark", data:allTT.dark, color:dk }, { label:"☀️ Light", data:allTT.light, color:lt }]} /></div>
         </div>
-          <div className="tbl-wrap">
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>{["Variable","🌙 Mean","☀️ Mean","Δ Mean","95% CI","t","df","p (raw)","p (Bonf.)","d","Effect","JB Norm.","Result"].map(h => <th key={h} style={thS}>{h}</th>)}</tr>
-            </thead>
+      </Card>
+
+      {/* ── Power Analysis ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Statistical Power Analysis</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
+          Observed power (1−β) to detect the observed effect at Bonferroni-corrected α = {(0.05/11).toFixed(4)} · Power ≥ 0.80 is conventionally adequate · Low power means failure to reject H₀ cannot be taken as evidence of no effect
+        </div>
+        <div className="tbl-wrap">
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>{["Variable","Cohen's d","n pairs","Power (1−β)","Adequate?","Interpretation"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
             <tbody>
-              {TEST_ROWS.filter(r => res.tests[r.k]).map(({ k, l }) => {
-                const t = res.tests[k], d = res.desc[k];
+              {TEST_ROWS.map(({ k, l }) => {
+                const t = tests[k]; const pw = res.power?.[k];
                 if (!t) return null;
-                const dm = d.dark.mean, lm = d.light.mean;
-                const diff = dm != null && lm != null ? dm - lm : null;
-                const norm = t.normality;
-                const pAdj = t.p != null ? Math.min(1, t.p * 11) : null; // Bonferroni-adjusted p
-                const sigColor = t.sig ? u.green : t.marginal ? u.orange : u.text3;
-                const sigBg = t.sig ? `${u.green}18` : t.marginal ? `${u.orange}18` : u.fill;
-                const sigBorder = t.sig ? u.green : t.marginal ? u.orange : u.border;
-                const sigLabel = t.sig ? "★ Significant" : t.marginal ? "~ Marginal" : "Not Significant";
+                const adequate = pw != null && pw >= 0.80;
+                const pwCol = pw == null ? u.text3 : pw >= 0.80 ? u.green : pw >= 0.50 ? u.orange : u.red;
+                const interp = pw == null ? "Insufficient data" : pw >= 0.80 ? "Adequate — results reliable" : pw >= 0.50 ? "Moderate — interpret with caution" : "Low — null result may be Type II error";
                 return (
                   <tr key={k}>
                     <td style={tdS(u.text)}>{l}</td>
-                    <td style={{ ...tdS(dk), fontFamily: L.mono }}>{fv(dm)}</td>
-                    <td style={{ ...tdS(lt), fontFamily: L.mono }}>{fv(lm)}</td>
-                    <td style={tdS(diff != null ? (diff > 0 ? u.green : u.red) : u.text3)}>{diff != null ? (diff > 0 ? "+" : "") + fv(diff) : "—"}</td>
-                    <td style={{ ...tdS(u.text3), fontFamily: L.mono, fontSize: L.fsXs }}>{t.ci95 ? `[${fv(t.ci95.lower)}, ${fv(t.ci95.upper)}]` : "—"}</td>
-                    <td style={{ ...tdS(u.teal), fontFamily: L.mono }}>{t.t}</td>
-                    <td style={{ ...tdS(u.text3), fontFamily: L.mono }}>{t.df}</td>
-                    <td style={{ ...tdS(t.p < 0.05 ? u.orange : u.text2), fontFamily: L.mono }}>{t.p?.toFixed(4)}</td>
-                    <td style={{ ...tdS(t.sig ? u.green : t.marginal ? u.orange : u.text2), fontFamily: L.mono, fontWeight: t.sig ? L.fwBold : 'normal' }}>{pAdj?.toFixed(4) ?? "—"}</td>
-                    <td style={{ ...tdS(dColor(t.cohensD)), fontFamily: L.mono, fontWeight: L.fwSemi }}>{t.cohensD != null ? (t.cohensD > 0 ? "+" : "") + t.cohensD : "—"}</td>
-                    <td style={tdS(dColor(t.cohensD))}>{t.cohenLabel}</td>
-                    <td style={tdS(norm?.tested ? (norm.normal ? u.green : u.orange) : u.text3)}>{norm?.tested ? (norm.normal ? "✓ Normal" : `⚠ p=${norm.p}`) : norm?.note || "—"}</td>
-                    <td>
-                      <span style={{ padding: "2px 8px", borderRadius: R.pill, fontSize: L.fsXs, fontWeight: L.fwBold, background: sigBg, color: sigColor, border: `1px solid ${sigBorder}28`, whiteSpace: "nowrap" }}>
-                        {sigLabel}
-                      </span>
-                      {sz.preliminary && <span style={{ marginLeft: 4, fontSize: L.fsXs, color: u.orange }}>†</span>}
-                    </td>
+                    <td style={{ ...tdS(dColor(t.cohensD)), fontFamily:L.mono }}>{t.cohensD ?? "—"}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{N}</td>
+                    <td style={{ ...tdS(pwCol), fontFamily:L.mono, fontWeight:L.fwBold }}>{pw != null ? (pw * 100).toFixed(1) + "%" : "—"}</td>
+                    <td><span style={{ padding:"2px 8px", borderRadius:R.pill, fontSize:L.fsXs, fontWeight:L.fwBold, background:adequate?`${u.green}18`:`${u.orange}14`, color:adequate?u.green:u.orange, border:`1px solid ${adequate?u.green:u.orange}28` }}>{adequate ? "✓ Yes" : "✗ No"}</span></td>
+                    <td style={tdS(pwCol, L.fsXs)}>{interp}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {sz.preliminary && <div style={{ padding: `${L.spSm}px ${L.spLg}px`, fontSize: L.fsXs, color: u.orange, borderTop: `1px solid ${u.border}` }}>† Findings marked preliminary due to small sample (n={res.n}). Effect size (d) and CI width are more informative than p-values at this sample size.</div>}
-          <div style={{ padding: `${L.spSm}px ${L.spLg}px`, fontSize: L.fsXs, color: u.text3, borderTop: `1px solid ${u.border}`, lineHeight: 1.7 }}>
-            <strong style={{ color: u.text2 }}>Bonferroni Correction:</strong> {11} simultaneous tests · adjusted α = 0.05 ÷ 11 = <strong style={{ color: u.accent }}>0.0045</strong> · <span style={{ color: u.green }}>★ Significant</span> = p(Bonf.) &lt; 0.0045 · <span style={{ color: u.orange }}>~ Marginal</span> = 0.0045 ≤ p &lt; 0.05 · p(Bonf.) = raw p × 11, capped at 1.000
+        </div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spSm }}>
+          To achieve 80% power for a medium effect (d = 0.5) at α = {(0.05/11).toFixed(4)}, approximately <strong style={{ color:u.accent }}>n = {Math.ceil(Math.pow((2.838 + 0.842) / 0.5, 2))}</strong> pairs are needed.
+        </div>
+      </Card>
+
+      {/* ── Wilcoxon Non-Parametric ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Non-Parametric Tests (Wilcoxon Signed-Rank)</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
+          Used when normality assumption fails (JB test). Wilcoxon makes no distributional assumptions. Compare results to parametric t-tests for robustness.
+        </div>
+        <div className="tbl-wrap">
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>{["Variable","W statistic","z","p (Wilcoxon)","Sig?","Matches t-test?","Normality"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+            <tbody>
+              {Object.entries(res.wilcoxon||{}).map(([k, w]) => {
+                const t = tests[k]; const row = TEST_ROWS.find(r=>r.k===k);
+                if (!row) return null;
+                const matches = w && t ? w.sig === t.sig : null;
+                return (
+                  <tr key={k}>
+                    <td style={tdS(u.text)}>{row.l}</td>
+                    <td style={{ ...tdS(u.teal), fontFamily:L.mono }}>{w?.W ?? "—"}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{w?.z ?? "—"}</td>
+                    <td style={{ ...tdS(w?.sig?u.green:u.text3), fontFamily:L.mono }}>{w?.p?.toFixed(4) ?? "—"}</td>
+                    <td style={tdS(w?.sig?u.green:u.text3)}>{w == null ? "—" : w.sig ? "★ Yes" : "No"}</td>
+                    <td><span style={{ padding:"2px 6px", borderRadius:R.pill, fontSize:L.fsXs, background:matches==null?u.fill:matches?`${u.green}18`:`${u.orange}18`, color:matches==null?u.text3:matches?u.green:u.orange, border:`1px solid ${matches==null?u.border:matches?u.green:u.orange}28` }}>{matches==null?"N/A":matches?"✓ Consistent":"⚠ Discrepant"}</span></td>
+                    <td style={tdS(u.text3, L.fsXs)}>{t?.normality?.tested ? (t.normality.normal ? "✓ Normal" : `⚠ Non-normal (p=${t.normality.p})`) : "Insufficient n"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spSm }}>Discrepant results (parametric and non-parametric disagree) should be reported with both p-values and interpreted conservatively.</div>
+      </Card>
+
+      {/* ── Order Effect ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Order Effect Check (DL vs LD Groups)</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
+          Compares the dark−light difference score between counterbalance groups using Welch's independent t-test. A significant result indicates an order effect (theme order affected outcomes).
+          DL group: n = {res.pairs.filter(p=>valid.find(u2=>u2.id===p.pid)?.orderGroup==="DL").length} · LD group: n = {res.pairs.filter(p=>valid.find(u2=>u2.id===p.pid)?.orderGroup==="LD").length}
+        </div>
+        {Object.keys(res.orderEffect||{}).length === 0 ? (
+          <div style={{ color:u.text3, fontSize:L.fsSm }}>Insufficient group sizes for order effect analysis. Need ≥ 2 participants per group.</div>
+        ) : (
+          <div className="tbl-wrap">
+            <table style={{ width:"100%", borderCollapse:"collapse" }}>
+              <thead><tr>{["Metric","DL Δ Mean","LD Δ Mean","t","df","p","Order Effect?"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+              <tbody>
+                {Object.entries(res.orderEffect).map(([k, oe]) => {
+                  const row = TEST_ROWS.find(r=>r.k===k);
+                  if (!row) return null;
+                  return (
+                    <tr key={k}>
+                      <td style={tdS(u.text)}>{row.l}</td>
+                      <td style={{ ...tdS(dk), fontFamily:L.mono }}>{oe?.meanA?.toFixed(4) ?? "—"}</td>
+                      <td style={{ ...tdS(lt), fontFamily:L.mono }}>{oe?.meanB?.toFixed(4) ?? "—"}</td>
+                      <td style={{ ...tdS(u.teal), fontFamily:L.mono }}>{oe?.t ?? "—"}</td>
+                      <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{oe?.df ?? "—"}</td>
+                      <td style={{ ...tdS(oe?.sig?u.red:u.green), fontFamily:L.mono }}>{oe?.p?.toFixed(4) ?? "—"}</td>
+                      <td><span style={{ padding:"2px 8px", borderRadius:R.pill, fontSize:L.fsXs, fontWeight:L.fwBold, background:oe?.sig?`${u.red}14`:`${u.green}14`, color:oe?.sig?u.red:u.green, border:`1px solid ${oe?.sig?u.red:u.green}28` }}>{oe==null?"N/A":oe.sig?"⚠ Detected":"✓ None"}</span></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
+        )}
       </Card>
 
-      {/* ── Reliability Analysis ── */}
-      <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
-        <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text, marginBottom: 4 }}>Reliability Analysis — Cronbach's Alpha (α)</div>
-        <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: L.spLg }}>Internal consistency of multi-item scales · α ≥ 0.70 = acceptable · Comfort items reverse-scored where applicable (†)</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: L.spMd }}>
-          {Object.values(res.reliability).map((rel) => {
-            const interp = alphaInterp(rel.alpha);
-            const barW = rel.alpha != null ? Math.min(100, Math.max(0, rel.alpha * 100)) : 0;
-            return (
-              <div key={rel.label} style={{ padding: L.spLg, background: u.fill, borderRadius: R.lg, border: `1px solid ${u.border}` }}>
-                <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: 4 }}>{rel.label}</div>
-                <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: L.spMd }}>k = {rel.items} items · n = {rel.n} participants</div>
-                <div style={{ display: "flex", alignItems: "center", gap: L.spMd, marginBottom: L.spSm }}>
-                  <div style={{ fontSize: 28, fontWeight: L.fwBold, color: u[interp.col] || u.text3, fontFamily: L.mono, minWidth: 56 }}>{rel.alpha ?? "—"}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ height: 8, background: u.border, borderRadius: 99, overflow: "hidden", marginBottom: 6 }}>
-                      <div style={{ height: "100%", width: `${barW}%`, background: u[interp.col] || u.text3, borderRadius: 99, transition: "width .8s" }} />
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: L.fsXs, color: u.text3 }}>
-                      <span>0 — Poor</span><span>0.7 — Acceptable</span><span>1.0</span>
-                    </div>
+      {/* ── Practice Effect ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Practice Effect Analysis (Phase 1 vs Phase 2)</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>
+          Compares overall accuracy in Phase 1 vs Phase 2 regardless of theme. A significant improvement indicates learning/practice effects that should be reported as a limitation.
+        </div>
+        {!res.practiceEffect ? (
+          <div style={{ color:u.text3, fontSize:L.fsSm }}>Insufficient data for practice effect analysis.</div>
+        ) : (() => {
+          const pe = res.practiceEffect;
+          const improved = pe.meanDiff < 0; // Phase2 > Phase1 means diff (P1-P2) < 0
+          return (
+            <div>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:L.spMd, marginBottom:L.spMd }}>
+                {[
+                  { l:"Phase 1 Mean", v:fv((p1Scores=>avg(p1Scores))(res.pairs.map(p=>{const u2=valid.find(u3=>u3.id===p.pid);const s=(u2?.experiments||[]).filter(e=>(e.tasks||[]).length>0)[0];const t2=(s?.tasks||[]).flatMap(t=>t.trials||[]);return t2.length?avg(t2.map(t=>t.acc||0)):null}).filter(v=>v!=null))), c:dk },
+                  { l:"Phase 2 Mean", v:fv((p2Scores=>avg(p2Scores))(res.pairs.map(p=>{const u2=valid.find(u3=>u3.id===p.pid);const s=(u2?.experiments||[]).filter(e=>(e.tasks||[]).length>0)[1];const t2=(s?.tasks||[]).flatMap(t=>t.trials||[]);return t2.length?avg(t2.map(t=>t.acc||0)):null}).filter(v=>v!=null))), c:lt },
+                  { l:"t-statistic", v:pe.t, c:u.teal },
+                  { l:"p-value", v:pe.p?.toFixed(4), c:pe.sig?u.red:u.green },
+                  { l:"Cohen's d", v:pe.cohensD, c:dColor(pe.cohensD) },
+                ].map(({ l, v, c }) => (
+                  <div key={l} style={{ padding:L.spMd, background:u.fill, borderRadius:R.md, textAlign:"center" }}>
+                    <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:3 }}>{l}</div>
+                    <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:c, fontFamily:L.mono }}>{v}</div>
                   </div>
-                </div>
-                <div style={{ padding: "8px 12px", borderRadius: R.md, background: `${u[interp.col] || u.text3}12`, border: `1px solid ${u[interp.col] || u.text3}22` }}>
-                  <div style={{ fontSize: L.fsXs, fontWeight: L.fwSemi, color: u[interp.col] || u.text3, marginBottom: 2 }}>{interp.label}</div>
-                  <div style={{ fontSize: L.fsXs, color: u.text2, lineHeight: 1.5 }}>{interp.note}</div>
-                </div>
+                ))}
               </div>
-            );
-          })}
+              <div style={{ padding:L.spMd, borderRadius:R.md, background:pe.sig?`${u.orange}10`:`${u.green}10`, border:`1px solid ${pe.sig?u.orange:u.green}28` }}>
+                <span style={{ fontSize:L.fsSm, color:pe.sig?u.orange:u.green, fontWeight:L.fwSemi }}>
+                  {pe.sig ? `⚠ Significant practice effect detected (p = ${pe.p?.toFixed(4)}) — performance ${improved?"improved":"declined"} from Phase 1 to Phase 2. Report as limitation.` : `✓ No significant practice effect (p = ${pe.p?.toFixed(4)}) — theme order did not systematically affect performance.`}
+                </span>
+              </div>
+            </div>
+          );
+        })()}
+      </Card>
+
+      {/* ── Per-Task Tests ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Per-Task Paired t-Tests</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Individual paired t-test for each task comparing dark vs light accuracy. Note: these are exploratory and should not be Bonferroni-corrected separately from the main analysis.</div>
+        <div className="tbl-wrap">
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr>{["Task","🌙 Dark","☀️ Light","Δ","t","df","p","d","Effect"].map(h=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+            <tbody>
+              {(res.taskTests||[]).map(({ tid, label, test: tt }) => {
+                if (!tt) return null;
+                const dm = desc[`task_${tid}`]?.dark?.mean ?? res.taskBreak.find(t=>t.tid===tid)?.dark?.mean;
+                const lm = desc[`task_${tid}`]?.light?.mean ?? res.taskBreak.find(t=>t.tid===tid)?.light?.mean;
+                const diff = dm!=null&&lm!=null ? dm-lm : null;
+                return (
+                  <tr key={tid}>
+                    <td style={tdS(u.text)}>{label}</td>
+                    <td style={{ ...tdS(dk), fontFamily:L.mono }}>{fv(dm)}</td>
+                    <td style={{ ...tdS(lt), fontFamily:L.mono }}>{fv(lm)}</td>
+                    <td style={tdS(diff!=null?(diff>0?u.green:u.red):u.text3)}>{diff!=null?((diff>0?"+":"")+fv(diff)):"—"}</td>
+                    <td style={{ ...tdS(u.teal), fontFamily:L.mono }}>{tt.t}</td>
+                    <td style={{ ...tdS(u.text3), fontFamily:L.mono }}>{tt.df}</td>
+                    <td style={{ ...tdS(tt.sig?u.green:u.text3), fontFamily:L.mono }}>{tt.p?.toFixed(4)??'—'}</td>
+                    <td style={{ ...tdS(dColor(tt.cohensD)), fontFamily:L.mono }}>{tt.cohensD!=null?(tt.cohensD>0?"+":"")+tt.cohensD:"—"}</td>
+                    <td style={tdS(dColor(tt.cohensD))}>{tt.cohenLabel||"—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </Card>
 
-      {/* ── Derived Research Metrics ── */}
-      <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
-        <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text, marginBottom: 4 }}>Derived Research Metrics</div>
-        <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: L.spMd }}>Composite indices computed dynamically from performance, RT, errors, and NASA-TLX · Range 0–1 (higher = better) except CognitiveLoadIndex (lower = better)</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: L.spMd }}>
-          {res.derivedMetrics.map(m => {
-            const t = m.test;
-            return (
-              <div key={m.key} style={{ padding: L.spMd, background: u.fill, borderRadius: R.lg, border: `1px solid ${u.border}` }}>
-                <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>{m.label}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(320px,1fr))", gap: 8, marginBottom: L.spSm }}>
-                  {[{ lbl: "🌙 Dark", v: m.dark.mean, c: dk }, { lbl: "☀️ Light", v: m.light.mean, c: lt }].map(({ lbl, v, c }) => (
-                    <div key={lbl} style={{ padding: "6px 8px", borderRadius: R.sm, background: `${c}12`, border: `1px solid ${c}22`, textAlign: "center" }}>
-                      <div style={{ fontSize: L.fsXs, color: u.text3 }}>{lbl}</div>
-                      <div style={{ fontSize: L.fsMd, fontWeight: L.fwBold, color: c }}>{v != null ? v.toFixed(3) : "—"}</div>
-                    </div>
-                  ))}
-                </div>
-                {t && <div style={{ fontSize: L.fsXs, color: t.sig ? u.green : u.text3 }}>
-                  {t.sig ? `★ Significant` : "Not significant"} · p={t.p?.toFixed(3)} · d={t.cohensD} ({t.cohenLabel})
-                </div>}
-              </div>
-            );
-          })}
+      {/* ── Correlation Matrix ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>Correlation Matrix (Pearson r)</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Correlations between key metrics across participants. |r| &gt; 0.5 = strong · |r| &gt; 0.3 = moderate · positive = same direction</div>
+        <div className="tbl-wrap">
+          <table style={{ width:"100%", borderCollapse:"collapse" }}>
+            <thead><tr><th style={thS}></th>{(res.corrLabels||[]).map(l=><th key={l} style={thS}>{l}</th>)}</tr></thead>
+            <tbody>
+              {(res.corrMatrix||[]).map((row, i) => (
+                <tr key={i}>
+                  <td style={{ ...tdS(u.text), fontWeight:L.fwSemi }}>{res.corrLabels?.[i]}</td>
+                  {row.map((r, j) => {
+                    if (i === j) return <td key={j} style={{ ...tdS(u.text3), textAlign:"center", background:u.fill }}>1.00</td>;
+                    const col = r == null ? u.text3 : Math.abs(r) > 0.5 ? u.green : Math.abs(r) > 0.3 ? u.teal : u.text3;
+                    const bg = r == null ? "transparent" : r > 0.5 ? `${u.green}14` : r < -0.5 ? `${u.red}14` : "transparent";
+                    return <td key={j} style={{ ...tdS(col), fontFamily:L.mono, textAlign:"center", background:bg }}>{r!=null?r.toFixed(2):"—"}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </Card>
 
-      {/* ── Visualisations ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: L.spMd, marginBottom: 16 }}>
-        <Card u={u} style={{ padding: L.spLg }}>
-          <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Accuracy by Task — Dark vs Light</div>
-          <GroupedBarChart u={u} maxV={1} colors={[dk, lt]}
-            groups={res.taskBreak.map(tb => ({ label: tb.label.split(" ")[0], vals: [tb.dark.mean, tb.light.mean] }))} />
-        </Card>
-        <Card u={u} style={{ padding: L.spLg }}>
-          <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Accuracy Distribution</div>
-          <HistogramChart u={u} xLabel="Accuracy" datasets={[{ label: "Dark", data: res.allAcc.dark, color: dk }, { label: "Light", data: res.allAcc.light, color: lt }]} />
-        </Card>
-        <Card u={u} style={{ padding: L.spLg }}>
-          <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Box Plots — Accuracy</div>
-          <div style={{ display: "flex", gap: L.spMd, justifyContent: "center" }}>
-            <BoxPlotSVG u={u} yLabel="Accuracy" datasets={[{ label: "🌙 Dark", data: res.allAcc.dark, color: dk }, { label: "☀️ Light", data: res.allAcc.light, color: lt }]} />
-            <BoxPlotSVG u={u} yLabel="Completion (ms)" datasets={[{ label: "🌙 Dark", data: res.allTT.dark, color: dk }, { label: "☀️ Light", data: res.allTT.light, color: lt }]} />
-          </div>
-        </Card>
-        <Card u={u} style={{ padding: L.spLg }}>
-          <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spSm }}>Task-by-Task Accuracy Trend</div>
-          <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: L.spMd }}>Fatigue and learning progression across the task sequence</div>
-          <TrendLineChart u={u} pairs={res.pairs} metric="acc" />
-        </Card>
-      </div>
-
-      {/* ── Correlations ── */}
-      <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
-        <div style={{ fontSize: L.fsBase, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Correlation Analysis (Pearson r)</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: L.spMd }}>
-          {res.correlations.map((c, i) => {
-            const r = c.r, a = r != null ? Math.abs(r) : null;
-            const col = a == null ? u.text3 : a > 0.5 ? u.green : a > 0.3 ? u.teal : u.text3;
+      {/* ── APA Results Text ── */}
+      <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:4 }}>APA-Formatted Results Section</div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Ready to copy into your thesis or paper. Update participant demographics and study context as needed.</div>
+        <div style={{ padding:L.spLg, background:u.fill, borderRadius:R.md, border:`1px solid ${u.border}`, fontSize:L.fsSm, color:u.text2, lineHeight:2, fontFamily:"Georgia,serif", userSelect:"all" }}>
+          {(() => {
+            const sigTests = TEST_ROWS.filter(r => tests[r.k]?.sig);
+            const margTests = TEST_ROWS.filter(r => tests[r.k]?.marginal);
+            const accT = tests.acc, rtT = tests.rt, nasaT = tests.nasa;
+            const accD = desc.acc, rtD = desc.rt;
+            const pe = res.practiceEffect;
             return (
-              <div key={i} style={{ padding: L.spMd, background: u.fill, borderRadius: R.lg, border: `1px solid ${u.border}` }}>
-                <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: 4 }}>{c.label}</div>
-                <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: L.spMd }}>{c.desc}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: L.spMd }}>
-                  <div style={{ fontSize: 22, fontWeight: L.fwBold, color: col, fontFamily: L.mono, minWidth: 60 }}>{r != null ? (r > 0 ? "+" : "") + r.toFixed(3) : "—"}</div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ height: 5, background: u.border, borderRadius: 99, overflow: "hidden" }}><div style={{ height: "100%", width: a != null ? `${a * 100}%` : "0%", background: col, borderRadius: 99 }} /></div>
-                    <div style={{ fontSize: L.fsXs, color: col, marginTop: 4, fontWeight: L.fwSemi }}>{corrStrength(r)}</div>
-                  </div>
-                </div>
-                {sz.preliminary && <div style={{ fontSize: L.fsXs, color: u.orange, marginTop: 6 }}>⚠ Preliminary — increase n for reliable correlation estimates</div>}
-              </div>
+              <>
+                <p><strong>Participants.</strong> {N} participants ({res.demoSummary?.n || N} with complete data) completed a within-subjects experiment comparing dark and light interface themes across {CFG.tasks.length} cognitive tasks. Counterbalancing ensured equal group sizes (DL: n = {res.counterbalance?.dl}, LD: n = {res.counterbalance?.ld}).</p>
+                <p><strong>Analysis.</strong> Paired-samples t-tests were conducted for {TEST_ROWS.length} dependent variables with Bonferroni correction (adjusted α = {(0.05/11).toFixed(4)}). Effect sizes are reported as Cohen's <em>d</em>. Where the Jarque-Bera test indicated non-normality, Wilcoxon signed-rank tests were conducted as non-parametric alternatives.</p>
+                {accT && <p><strong>Accuracy.</strong> {accD?.dark?.mean != null && accD?.light?.mean != null ? `Mean accuracy in dark mode (M = ${fv(accD.dark.mean)}, SD = ${fv(accD.dark.sd)}) was ${accD.dark.mean > accD.light.mean ? "higher" : "lower"} than in light mode (M = ${fv(accD.light.mean)}, SD = ${fv(accD.light.sd)}). ` : ""}A paired-samples t-test {accT.sig ? "revealed a statistically significant difference" : "did not reveal a statistically significant difference"}, t({accT.df}) = {accT.t}, p = {accT.p?.toFixed(4)} (Bonferroni-adjusted p = {Math.min(1, (accT.p||0)*11).toFixed(4)}), d = {accT.cohensD} [{accT.ci95 ? `95% CI: ${fv(accT.ci95.lower)}, ${fv(accT.ci95.upper)}` : ""}].</p>}
+                {rtT && <p><strong>Response Time.</strong> Mean response time in dark mode (M = {fv(desc.rt?.dark?.mean)} ms, SD = {fv(desc.rt?.dark?.sd)}) and light mode (M = {fv(desc.rt?.light?.mean)} ms, SD = {fv(desc.rt?.light?.sd)}). t({rtT.df}) = {rtT.t}, p = {rtT.p?.toFixed(4)}, d = {rtT.cohensD}.</p>}
+                {nasaT && <p><strong>Cognitive Workload (NASA-TLX).</strong> Mean workload in dark mode (M = {fv(desc.nasa?.dark?.mean)}, SD = {fv(desc.nasa?.dark?.sd)}) and light mode (M = {fv(desc.nasa?.light?.mean)}, SD = {fv(desc.nasa?.light?.sd)}). t({nasaT.df}) = {nasaT.t}, p = {nasaT.p?.toFixed(4)}, d = {nasaT.cohensD}.</p>}
+                {sigTests.length > 0 && <p><strong>Significant findings.</strong> The following variables reached Bonferroni-corrected significance: {sigTests.map((r, i) => `${r.l} (t(${tests[r.k].df}) = ${tests[r.k].t}, p = ${tests[r.k].p?.toFixed(4)}, d = ${tests[r.k].cohensD})`).join("; ")}.</p>}
+                {sigTests.length === 0 && <p><strong>Null findings.</strong> No variables reached Bonferroni-corrected significance (α = {(0.05/11).toFixed(4)}). {margTests.length > 0 ? `Marginal effects were observed for: ${margTests.map(r => r.l).join(", ")} (uncorrected p < .05). ` : ""}Effect sizes and confidence intervals are the primary basis for interpretation given the preliminary sample size.</p>}
+                {pe && <p><strong>Practice effects.</strong> {pe.sig ? `A significant practice effect was detected, t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, d = ${pe.cohensD}, indicating that performance changed from Phase 1 to Phase 2 regardless of theme. This should be considered when interpreting theme-related differences.` : `No significant practice effect was detected, t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, suggesting that performance was stable across phases.`}</p>}
+              </>
             );
-          })}
+          })()}
         </div>
+        <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spSm }}>💡 Select all text above to copy. Review and customise before submission.</div>
       </Card>
 
     </div>
   );
 }
-// ─── LIVE MONITOR TAB ────────────────────────────────────────────────────────────
-function LiveMonitorTab({ u, users }) {
-  const [tick, setTick] = useState(0);
-  useEffect(() => { const iv = setInterval(() => setTick(t=>t+1), 5000); return () => clearInterval(iv); }, []);
-  const todayStr = new Date().toDateString();
-  const all = db.all().filter(x => x.role !== "admin");
-  const activeToday    = all.filter(usr => (usr.experiments||[]).some(e => e.ts && new Date(e.ts).toDateString() === todayStr));
-  const inProgress     = activeToday.filter(usr => !usr.completed && (usr.experiments||[]).length < 2);
-  const completedToday = activeToday.filter(usr =>  usr.completed || (usr.experiments||[]).length >= 2);
-  const updated = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", hour12:true });
 
-  return (
-    <div className="au" style={{ fontFamily:L.font }}>
-      <SectionHdr u={u} eyebrow="Real-time" title="Live Monitor"
-        action={<div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 14px", borderRadius:R.pill, background:`${u.green}12`, border:`1px solid ${u.green}28` }}><div style={{ width:7, height:7, borderRadius:"50%", background:u.green }} /><span style={{ fontSize:L.fsXs, color:u.green, fontWeight:L.fwSemi }}>Live · {updated}</span></div>}
-      />
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:L.spMd, marginBottom:24 }}>
-        {[{l:"Active Today",v:activeToday.length,c:u.accent,i:"👥"},{l:"In Progress",v:inProgress.length,c:u.orange,i:"⚡"},{l:"Completed",v:completedToday.length,c:u.green,i:"✓"},{l:"Sessions",v:all.flatMap(x=>(x.experiments||[]).filter(e=>e.ts&&new Date(e.ts).toDateString()===todayStr)).length,c:u.teal,i:"📋"}].map(({l,v,c,i})=>(
-          <Card key={l} u={u} style={{ padding:L.spMd, position:"relative", overflow:"hidden" }}>
-            <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:c }} />
-            <div style={{ fontSize:20, marginBottom:L.spSm }}>{i}</div>
-            <div style={{ fontSize:30, fontWeight:L.fwBlack, color:c, fontFamily:L.mono, lineHeight:1 }}>{v}</div>
-            <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:4 }}>{l}</div>
-          </Card>
-        ))}
-      </div>
-      {inProgress.length > 0 && <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}><div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>⚡ In Progress</div>{inProgress.map(usr=><div key={usr.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, marginBottom:8 }}><div style={{ width:36,height:36,borderRadius:10,background:u.grad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:L.fwBold,color:"#fff",flexShrink:0 }}>{usr.name.slice(0,2).toUpperCase()}</div><div style={{ flex:1 }}><div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{usr.name}</div><div style={{ fontSize:L.fsXs, color:u.text3 }}>Phase {(usr.experiments||[]).length+1} of 2</div></div><span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.orange}18`, color:u.orange, border:`1px solid ${u.orange}30` }}>Active</span></div>)}</Card>}
-      {completedToday.length > 0 && <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}><div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>✓ Completed Today</div>{completedToday.map(usr=><div key={usr.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, marginBottom:8 }}><div style={{ width:36,height:36,borderRadius:10,background:u.gradSoft,border:`1px solid ${u.green}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:L.fwBold,color:u.green,flexShrink:0 }}>{usr.name.slice(0,2).toUpperCase()}</div><div style={{ flex:1 }}><div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{usr.name}</div><div style={{ fontSize:L.fsXs, color:u.text3 }}>Preferred: {usr.pref||"—"}</div></div><span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.green}18`, color:u.green, border:`1px solid ${u.green}28` }}>Done</span></div>)}</Card>}
-      {activeToday.length === 0 && <EmptyState u={u} icon="👁" title="No activity today" body="Participants who start or complete the experiment today appear here." />}
-    </div>
-  );
-}
-
-// ─── SETTINGS TAB ────────────────────────────────────────────────────────────────
-function SettingsTab({ u }) {
-  const [s, setS] = useState(() => loadSettings());
-  const [saved, setSaved] = useState(false);
-  const save = () => { saveSettings(s); applySettings(); setSaved(true); setTimeout(() => setSaved(false), 2000); };
-  const reset = () => { saveSettings(DEFAULT_SETTINGS); setS({ ...DEFAULT_SETTINGS }); applySettings(); };
-  const inp = { width:"100%", padding:"9px 12px", borderRadius:R.md, border:`1px solid ${u.border}`, background:u.fill, color:u.text, fontFamily:L.font, fontSize:L.fsSm, outline:"none", boxSizing:"border-box" };
-
-  return (
-    <div className="au" style={{ fontFamily:L.font }}>
-      <SectionHdr u={u} eyebrow="Administration" title="Study Settings"
-        sub="Configure trial counts and study metadata."
-        action={<div style={{ display:"flex", gap:L.spSm }}><Btn u={u} v="ghost" sm onClick={reset}>Reset</Btn><Btn u={u} v="grad" sm onClick={save}>{saved ? "✓ Saved" : "Save"}</Btn></div>}
-      />
-      <Card u={u} style={{ padding:L.spLg, marginBottom:20 }}>
-        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>Study Information</div>
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:L.spMd }}>
-          {[{k:"studyTitle",l:"Study Title",ph:"Dark vs Light Mode Study"},{k:"researcher",l:"Researcher",ph:"Your name"},{k:"institution",l:"Institution",ph:"University / Lab"},{k:"contactEmail",l:"Contact Email",ph:"email@university.edu"}].map(({k,l,ph})=>(
-            <div key={k}><div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:6, fontWeight:L.fwSemi }}>{l}</div><input value={s[k]||""} onChange={e=>setS(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={inp} /></div>
-          ))}
-        </div>
-      </Card>
-      <Card u={u} style={{ padding:L.spLg, marginBottom:20 }}>
-        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:4 }}>Trial Counts Per Task</div>
-        <div style={{ fontSize:L.fsSm, color:u.text2, marginBottom:L.spMd }}>Adjust the number of trials per task. Changes apply to new sessions.</div>
-        <div style={{ display:"flex", flexDirection:"column", gap:L.spSm }}>
-          {CFG.tasks.map(tid => {
-            const v = s.trialCounts?.[tid] ?? CFG.TN[tid] ?? 2;
-            return (
-              <div key={tid} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:`${L.spSm}px ${L.spMd}px`, background:u.fill, borderRadius:R.md }}>
-                <div style={{ flex:1, fontSize:L.fsSm, color:u.text }}>{CFG.TL[tid]||tid}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:L.spSm }}>
-                  <button onClick={()=>setS(p=>({...p,trialCounts:{...(p.trialCounts||{}),[tid]:Math.max(1,(p.trialCounts?.[tid]??v)-1)}}))} style={{ width:28,height:28,borderRadius:R.sm,border:`1px solid ${u.border}`,background:u.bg,color:u.text,cursor:"pointer",fontSize:16 }}>−</button>
-                  <span style={{ width:28,textAlign:"center",fontSize:L.fsBase,fontWeight:L.fwBold,color:u.text,fontFamily:L.mono }}>{v}</span>
-                  <button onClick={()=>setS(p=>({...p,trialCounts:{...(p.trialCounts||{}),[tid]:Math.min(20,(p.trialCounts?.[tid]??v)+1)}}))} style={{ width:28,height:28,borderRadius:R.sm,border:`1px solid ${u.border}`,background:u.bg,color:u.text,cursor:"pointer",fontSize:16 }}>+</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Card>
-    </div>
-  );
-}
-
-// ─── LIMITATIONS TAB ─────────────────────────────────────────────────────────────
 function LimitationsTab({ u }) {
   const [active, setActive] = useState(null);
 
@@ -4282,8 +4736,10 @@ function LimitationsTab({ u }) {
       items: [
         { title: "Single-Session Design", desc: "Both conditions were tested in one visit. Long-term preference formation, habituation, and sustained-use effects remain unexamined.", severity: "Moderate" },
         { title: "Theme Scope", desc: "Only default system light and dark themes were tested. Custom schemes, high-contrast modes, and blue-light filters were excluded.", severity: "Moderate" },
-        { title: "Multiple Comparisons", desc: "11 simultaneous t-tests were conducted at α = 0.05 without Bonferroni correction, elevating the risk of Type I error. Effect size and CI width should guide interpretation.", severity: "High" },
-        { title: "Normality Assumption", desc: "Paired t-tests assume normally distributed difference scores. With small samples this may not hold; non-parametric alternatives should be considered where Jarque-Bera flags violations.", severity: "Moderate" },
+        { title: "Multiple Comparisons", desc: "11 simultaneous t-tests were conducted with Bonferroni correction (α = 0.0045). Corrected p-values are reported, but the correction is conservative and may increase Type II error (missing real effects). Effect size and CI width should also guide interpretation.", severity: "Low" },
+        { title: "Normality Assumption", desc: "Paired t-tests assume normally distributed difference scores. Where Jarque-Bera flags violations, Wilcoxon signed-rank non-parametric tests are provided as alternatives in the Analysis tab.", severity: "Low" },
+        { title: "Stimulus Difficulty Matching", desc: "Both phases use randomly generated stimuli rather than pre-matched stimulus sets. Unequal difficulty across phases could confound theme comparisons. A fixed stimulus set counterbalanced across conditions would strengthen internal validity.", severity: "High" },
+        { title: "Practice Effect", desc: "Even with counterbalancing, participants completing Phase 2 may benefit from task familiarity. Practice effect analysis is available in the Analysis tab. If significant, theme effects may be partially explained by learning.", severity: "Moderate" },
       ]
     },
   ];
