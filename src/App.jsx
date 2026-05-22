@@ -973,10 +973,11 @@ function saveSettings(s) {
   try { localStorage.setItem("hci_settings", JSON.stringify(s)); } catch {}
 }
 // Apply saved trial counts to CFG.TN at startup
-(function applySettings() {
+function applySettings() {
   const s = loadSettings();
   if (s.trialCounts) Object.assign(CFG.TN, s.trialCounts);
-})();
+}
+applySettings(); // apply on startup
 
 
 const gen = {
@@ -2732,7 +2733,7 @@ function PatternsTab({ user, u }) {
     </div>
   );
 
-  const dims = [{ l:"Attention", v:stats.cog.attention||0 },{ l:"Inhibition", v:stats.cog.inhibition||0 },{ l:"Analysis", v:stats.cog.analysis||0 },{ l:"Reading", v:stats.cog.reading||0 },{ l:"Decision", v:stats.cog.decision||0 },{ l:"Precision", v:stats.cog.precision||0 },{ l:"Memory", v:stats.cog.memory||0 },{ l:"Navigation", v:stats.cog.navigation||0 }];
+  const dims = [{ l:"Attention", v:stats.cog?.attention||0 },{ l:"Inhibition", v:stats.cog?.inhibition||0 },{ l:"Analysis", v:stats.cog?.analysis||0 },{ l:"Reading", v:stats.cog?.reading||0 },{ l:"Decision", v:stats.cog?.decision||0 },{ l:"Precision", v:stats.cog?.precision||0 },{ l:"Memory", v:stats.cog?.memory||0 },{ l:"Navigation", v:stats.cog?.navigation||0 }];
 
   return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
@@ -2759,7 +2760,8 @@ function PatternsTab({ user, u }) {
       {/* Per-task grid */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:10 }}>
         {CFG.tasks.map((tid,i) => {
-          const tp = stats.tperf[tid];
+          const tp = stats.tperf?.[tid];
+          if (!tp) return null;
           return (
             <Card key={tid} u={u} style={{ padding:L.spMd }}>
               <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:6 }}>{CFG.TL[tid]}</div>
@@ -2968,8 +2970,9 @@ function ObjectiveTab({ user, u }) {
             </thead>
             <tbody>
               {CFG.tasks.map((tid,i) => {
-                const tp = stats.tperf[tid];
-                return tp.n ? (
+                const tp = stats.tperf?.[tid];
+                if (!tp || !tp.n) return null;
+                return (
                   <tr key={tid} style={{ background:i%2===0?"transparent":u.fill }}>
                     <td style={{ ...tdS(u.text), fontWeight:L.fwSemi }}>{CFG.TL[tid]}</td>
                     <td style={tdS(u.text3)}>{tp.n}</td>
@@ -2981,7 +2984,7 @@ function ObjectiveTab({ user, u }) {
                       </div>
                     </td>
                   </tr>
-                ) : null;
+                );
               })}
             </tbody>
           </table>
@@ -3168,7 +3171,7 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: L.spMd, marginBottom: 20 }}>
             <Card u={u} style={{ padding: L.spLg, display: "flex", flexDirection: "column", alignItems: "center" }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Cognitive Profile</div>
-              <Radar u={u} dims={[{ l:"Attention", v:stats.cog.attention||0 }, { l:"Inhibition", v:stats.cog.inhibition||0 }, { l:"Analysis", v:stats.cog.analysis||0 }, { l:"Reading", v:stats.cog.reading||0 }, { l:"Decision", v:stats.cog.decision||0 }, { l:"Precision", v:stats.cog.precision||0 }, { l:"Memory", v:stats.cog.memory||0 }, { l:"Navigation", v:stats.cog.navigation||0 }]} size={160} />
+              <Radar u={u} dims={[{ l:"Attention", v:stats.cog?.attention||0 }, { l:"Inhibition", v:stats.cog?.inhibition||0 }, { l:"Analysis", v:stats.cog?.analysis||0 }, { l:"Reading", v:stats.cog?.reading||0 }, { l:"Decision", v:stats.cog?.decision||0 }, { l:"Precision", v:stats.cog?.precision||0 }, { l:"Memory", v:stats.cog?.memory||0 }, { l:"Navigation", v:stats.cog?.navigation||0 }]} size={160} />
             </Card>
             <Card u={u} style={{ padding: L.spLg }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Dark vs Light Comparison</div>
@@ -4348,7 +4351,7 @@ function generateInsights(stats, user, nasa, dkC, ltC) {
   };
 
   CFG.tasks.forEach(tid => {
-    const tp = stats.tperf[tid];
+    const tp = stats.tperf?.[tid];
     if (!tp || !tp.n) return;
     const acc = tp.acc ?? 0;
     const level = strengthLevel(acc);
@@ -4526,7 +4529,7 @@ function ReportScreen({ user, u, onBack }) {
             Each task measures a specific cognitive skill. Below are your scores alongside a plain-language explanation of what they mean for you.
           </div>
           {CFG.tasks.map((tid, i) => {
-            const tp = stats.tperf[tid];
+            const tp = stats.tperf?.[tid];
             if (!tp || !tp.n) return null;
             const acc = tp.acc ?? 0;
             const col = accColor(acc);
@@ -4650,6 +4653,82 @@ function ReportScreen({ user, u, onBack }) {
 
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── LIVE MONITOR TAB ─────────────────────────────────────────────────────────────
+function LiveMonitorTab({ u, users }) {
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const iv = setInterval(() => setTick(t=>t+1), 5000); return () => clearInterval(iv); }, []);
+  const todayStr = new Date().toDateString();
+  const all = db.all().filter(x => x.role !== "admin");
+  const activeToday    = all.filter(u2 => (u2.experiments||[]).some(e => e.ts && new Date(e.ts).toDateString() === todayStr));
+  const inProgress     = activeToday.filter(u2 => !u2.completed && (u2.experiments||[]).length < 2);
+  const completedToday = activeToday.filter(u2 => u2.completed || (u2.experiments||[]).length >= 2);
+  const updated = new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  return (
+    <div className="au" style={{ fontFamily:L.font }}>
+      <SectionHdr u={u} eyebrow="Real-time" title="Live Monitor"
+        action={<div style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 14px", borderRadius:R.pill, background:`${u.green}12`, border:`1px solid ${u.green}28` }}><div style={{ width:7, height:7, borderRadius:"50%", background:u.green }} /><span style={{ fontSize:L.fsXs, color:u.green, fontWeight:L.fwSemi }}>Live · {updated}</span></div>}
+      />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))", gap:L.spMd, marginBottom:24 }}>
+        {[{l:"Active Today",v:activeToday.length,c:u.accent,i:"👥"},{l:"In Progress",v:inProgress.length,c:u.orange,i:"⚡"},{l:"Completed",v:completedToday.length,c:u.green,i:"✓"},{l:"Total",v:all.length,c:u.teal,i:"📋"}].map(({l,v,c,i})=>(
+          <Card key={l} u={u} style={{ padding:L.spMd, position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:c }} />
+            <div style={{ fontSize:20, marginBottom:L.spSm }}>{i}</div>
+            <div style={{ fontSize:30, fontWeight:L.fwBlack, color:c, fontFamily:L.mono, lineHeight:1 }}>{v}</div>
+            <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:4 }}>{l}</div>
+          </Card>
+        ))}
+      </div>
+      {inProgress.length > 0 && <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}><div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>⚡ In Progress</div>{inProgress.map(u2=><div key={u2.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, marginBottom:8 }}><div style={{ width:36,height:36,borderRadius:10,background:u.grad,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:L.fwBold,color:"#fff",flexShrink:0 }}>{u2.name.slice(0,2).toUpperCase()}</div><div style={{ flex:1 }}><div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{u2.name}</div><div style={{ fontSize:L.fsXs, color:u.text3 }}>Phase {(u2.experiments||[]).length+1} of 2</div></div><span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.orange}18`, color:u.orange, border:`1px solid ${u.orange}30` }}>Active</span></div>)}</Card>}
+      {completedToday.length > 0 && <Card u={u} style={{ padding:L.spLg, marginBottom:16 }}><div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>✓ Completed Today</div>{completedToday.map(u2=><div key={u2.id} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:L.spMd, background:u.fill, borderRadius:R.md, marginBottom:8 }}><div style={{ width:36,height:36,borderRadius:10,background:u.gradSoft,border:`1px solid ${u.green}28`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:L.fwBold,color:u.green,flexShrink:0 }}>{u2.name.slice(0,2).toUpperCase()}</div><div style={{ flex:1 }}><div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{u2.name}</div><div style={{ fontSize:L.fsXs, color:u.text3 }}>Preferred: {u2.pref||"—"}</div></div><span style={{ fontSize:L.fsXs, padding:"3px 10px", borderRadius:R.pill, background:`${u.green}18`, color:u.green, border:`1px solid ${u.green}28` }}>Done</span></div>)}</Card>}
+      {activeToday.length === 0 && <EmptyState u={u} icon="👁" title="No activity today" body="Participants who start or complete the experiment today appear here." />}
+    </div>
+  );
+}
+
+// ─── SETTINGS TAB ─────────────────────────────────────────────────────────────────
+function SettingsTab({ u }) {
+  const [s, setS] = useState(() => loadSettings());
+  const [saved, setSaved] = useState(false);
+  const save = () => { saveSettings(s); applySettings(); setSaved(true); setTimeout(() => setSaved(false), 2000); };
+  const reset = () => { saveSettings(DEFAULT_SETTINGS); setS({ ...DEFAULT_SETTINGS }); applySettings(); };
+  const inp = { width:"100%", padding:"9px 12px", borderRadius:R.md, border:`1px solid ${u.border}`, background:u.fill, color:u.text, fontFamily:L.font, fontSize:L.fsSm, outline:"none", boxSizing:"border-box" };
+  return (
+    <div className="au" style={{ fontFamily:L.font }}>
+      <SectionHdr u={u} eyebrow="Administration" title="Study Settings"
+        sub="Configure trial counts and study metadata."
+        action={<div style={{ display:"flex", gap:L.spSm }}><Btn u={u} v="ghost" sm onClick={reset}>Reset</Btn><Btn u={u} v="grad" sm onClick={save}>{saved ? "✓ Saved" : "Save"}</Btn></div>}
+      />
+      <Card u={u} style={{ padding:L.spLg, marginBottom:20 }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>Study Information</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:L.spMd }}>
+          {[{k:"studyTitle",l:"Study Title",ph:"Dark vs Light Mode Study"},{k:"researcher",l:"Researcher",ph:"Your name"},{k:"institution",l:"Institution",ph:"University / Lab"},{k:"contactEmail",l:"Contact Email",ph:"email@university.edu"}].map(({k,l,ph})=>(
+            <div key={k}><div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:6, fontWeight:L.fwSemi }}>{l}</div><input value={s[k]||""} onChange={e=>setS(p=>({...p,[k]:e.target.value}))} placeholder={ph} style={inp} /></div>
+          ))}
+        </div>
+      </Card>
+      <Card u={u} style={{ padding:L.spLg }}>
+        <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text, marginBottom:4 }}>Trial Counts Per Task</div>
+        <div style={{ fontSize:L.fsSm, color:u.text2, marginBottom:L.spMd }}>Adjust the number of trials per task. Changes apply to new sessions.</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:L.spSm }}>
+          {CFG.tasks.map(tid => {
+            const v = s.trialCounts?.[tid] ?? CFG.TN[tid] ?? 2;
+            return (
+              <div key={tid} style={{ display:"flex", alignItems:"center", gap:L.spMd, padding:`${L.spSm}px ${L.spMd}px`, background:u.fill, borderRadius:R.md }}>
+                <div style={{ flex:1, fontSize:L.fsSm, color:u.text }}>{CFG.TL[tid]||tid}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:L.spSm }}>
+                  <button onClick={()=>setS(p=>({...p,trialCounts:{...(p.trialCounts||{}),[tid]:Math.max(1,(p.trialCounts?.[tid]??v)-1)}}))} style={{ width:28,height:28,borderRadius:R.sm,border:`1px solid ${u.border}`,background:u.bg,color:u.text,cursor:"pointer",fontSize:16 }}>−</button>
+                  <span style={{ width:28,textAlign:"center",fontSize:L.fsBase,fontWeight:L.fwBold,color:u.text,fontFamily:L.mono }}>{v}</span>
+                  <button onClick={()=>setS(p=>({...p,trialCounts:{...(p.trialCounts||{}),[tid]:Math.min(20,(p.trialCounts?.[tid]??v)+1)}}))} style={{ width:28,height:28,borderRadius:R.sm,border:`1px solid ${u.border}`,background:u.bg,color:u.text,cursor:"pointer",fontSize:16 }}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
     </div>
   );
 }
