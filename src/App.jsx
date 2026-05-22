@@ -619,7 +619,6 @@ function computeAnalysis(users) {
     comfort: { alpha: cronbachAlpha(comfortMatrix), items: 4, label: "Comfort Scale (vc, es†, fa†, sat)",    n: comfortMatrix.length },
   };
 
-  const ALPHA_BONF = 0.05 / 11;
 
   // ── Power analysis per test ──────────────────────────────────────────────────
   const power = Object.fromEntries(Object.entries(tests).map(([k, t]) => {
