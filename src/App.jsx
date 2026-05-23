@@ -3385,453 +3385,525 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
 // ─── ADMIN ────────────────────────────────────────────────────────────────────────
 // ─── ANALYSIS TAB ────────────────────────────────────────────────────────────────
 // ─── ANALYSIS TAB ─────────────────────────────────────────────────────────────────
+// ─── ANALYSIS TAB ─────────────────────────────────────────────────────────────────
 function AnalysisTab({ u, users }) {
   const res = useMemo(() => computeAnalysis(users), [users]);
-  if (!res || res.insufficient === undefined) return <div style={{ padding:40, color:u.text3, fontFamily:L.font }}>Computing analysis…</div>;
+  const [expanded, setExpanded] = useState({});
+  const toggle = k => setExpanded(p => ({ ...p, [k]: !p[k] }));
+  const [w, setW] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+  useEffect(() => { const h = () => setW(window.innerWidth); window.addEventListener('resize', h); return () => window.removeEventListener('resize', h); }, []);
+  const isDesktop = w >= 1024, isTablet = w >= 640;
 
-  const dk = "#6366f1", lt = "#f59e0b";
-  const SIG = "#10b981", MAR = "#f97316", NS = u.text3;
+  if (!res || res.insufficient === undefined) return (
+    <div style={{ padding:40, textAlign:'center', color:u.text3, fontFamily:L.font }}>Computing…</div>
+  );
+
+  // ── Color system ──────────────────────────────────────────────────────────────
+  const DK  = '#7c3aed';  // dark mode  — purple
+  const LT  = '#d97706';  // light mode — amber
+  const SIG = '#059669';  // significant — emerald
+  const MAR = '#ea580c';  // marginal    — orange
+  const NS  = u.text3;    // not sig     — muted
 
   if (res.insufficient) return (
-    <div style={{ padding:40, fontFamily:L.font }}>
-      <div style={{ maxWidth:480, margin:"40px auto", textAlign:"center" }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>📊</div>
-        <div style={{ fontSize:20, fontWeight:700, color:u.text, marginBottom:8 }}>Awaiting Data</div>
-        <div style={{ fontSize:14, color:u.text2, lineHeight:1.7 }}>At least 2 participants must complete both phases to run paired comparisons. Currently <strong style={{ color:u.accent }}>{res.n}</strong> valid pair{res.n!==1?"s":""} available.</div>
-      </div>
+    <div style={{ padding:48, fontFamily:L.font, maxWidth:520, margin:'0 auto', textAlign:'center' }}>
+      <div style={{ width:56, height:56, borderRadius:16, background:`${u.accent}15`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:24, margin:'0 auto 20px' }}>📊</div>
+      <div style={{ fontSize:20, fontWeight:700, color:u.text, marginBottom:8 }}>Awaiting data</div>
+      <div style={{ fontSize:14, color:u.text2, lineHeight:1.8 }}>At least 2 participants must complete both phases before paired comparisons can run. Currently <strong style={{ color:u.accent }}>{res.n}</strong> valid pair{res.n!==1?'s':''} available.</div>
     </div>
   );
 
   const { pairs, desc, tests, taskBreak, counterbalance:cb, szLabel:sz, allAcc, allTT, demoSummary, reliability,
     power:resPower={}, wilcoxon:resWilcoxon={}, orderEffect:resOrderEffect={},
-    practiceEffect:pe=null, corrMatrix:resCorrMatrix=[],
-    corrLabels:resCorrLabels=[], taskTests:resTaskTests=[] } = res;
+    practiceEffect:pe=null, corrMatrix:CM=[], corrLabels:CL=[], taskTests:TT=[] } = res;
 
-  const N = pairs.length, N_TESTS = 11;
-  const ALPHA = (0.05/N_TESTS).toFixed(4);
-
-  const TEST_ROWS = [
-    { k:"acc",    l:"Accuracy",       unit:"",    hi:true  },
-    { k:"rt",     l:"Response Time",  unit:" ms", hi:false },
-    { k:"tt",     l:"Completion Time",unit:" ms", hi:false },
-    { k:"err",    l:"Error Rate",     unit:"",    hi:false },
-    { k:"nasa",   l:"NASA-TLX Total", unit:"",    hi:false },
-    { k:"nasaMD", l:"Mental Demand",  unit:"",    hi:false },
-    { k:"nasFR",  l:"Frustration",    unit:"",    hi:false },
-    { k:"vc",     l:"Visual Comfort", unit:"/7",  hi:true  },
-    { k:"es",     l:"Eye Strain",     unit:"/7",  hi:false },
-    { k:"fa",     l:"Fatigue",        unit:"/7",  hi:false },
-    { k:"sa",     l:"Satisfaction",   unit:"/7",  hi:true  },
-  ];
-
+  const N = pairs.length, NT = 11, ALPHA = (0.05/NT).toFixed(4);
   const sigRows  = TEST_ROWS.filter(r => tests[r.k]?.sig);
   const margRows = TEST_ROWS.filter(r => tests[r.k]?.marginal);
-  const fv = v => v==null||isNaN(v) ? "—" : Math.abs(v)>=100?Math.round(v)+"":Math.abs(v)>=10?v.toFixed(1):v.toFixed(3);
-  const fm = v => v==null?0:v;
-  const sigColor  = t => t?.sig ? SIG : t?.marginal ? MAR : NS;
-  const dColor    = d => d==null?NS:Math.abs(d)>=0.8?u.red:Math.abs(d)>=0.5?MAR:Math.abs(d)>=0.2?u.teal:NS;
-  const accentRow = t => t?.sig?`${SIG}08`:t?.marginal?`${MAR}06`:"transparent";
 
-  // ── Shared heading component ──────────────────────────────────────────────────
-  const SecHdr = ({ num, title, sub }) => (
-    <div style={{ display:"flex", alignItems:"baseline", gap:14, marginBottom:20, paddingBottom:12, borderBottom:`1px solid ${u.border}` }}>
-      <span style={{ fontSize:11, fontWeight:700, color:u.text3, letterSpacing:2, fontFamily:L.mono, minWidth:24 }}>{num}</span>
-      <div>
-        <div style={{ fontSize:17, fontWeight:700, color:u.text, letterSpacing:-.2 }}>{title}</div>
-        {sub && <div style={{ fontSize:12, color:u.text3, marginTop:2 }}>{sub}</div>}
+  const fv = v => v==null||isNaN(v)?'—':Math.abs(v)>=100?Math.round(v)+'':Math.abs(v)>=10?v.toFixed(1):v.toFixed(3);
+  const sigCol = t => t?.sig?SIG:t?.marginal?MAR:NS;
+  const dCol   = d => d==null?NS:Math.abs(d)>=0.8?u.red:Math.abs(d)>=0.5?MAR:Math.abs(d)>=0.2?u.teal:NS;
+  const rowBg  = t => t?.sig?`${SIG}08`:t?.marginal?`${MAR}06`:'transparent';
+
+  const TEST_ROWS = [
+    { k:'acc',    l:'Accuracy',         hi:true  },
+    { k:'rt',     l:'Response Time',    hi:false },
+    { k:'tt',     l:'Completion Time',  hi:false },
+    { k:'err',    l:'Error Rate',       hi:false },
+    { k:'nasa',   l:'NASA-TLX Total',   hi:false },
+    { k:'nasaMD', l:'Mental Demand',    hi:false },
+    { k:'nasFR',  l:'Frustration',      hi:false },
+    { k:'vc',     l:'Visual Comfort',   hi:true  },
+    { k:'es',     l:'Eye Strain',       hi:false },
+    { k:'fa',     l:'Fatigue',          hi:false },
+    { k:'sa',     l:'Satisfaction',     hi:true  },
+  ];
+
+  // ── Sub-components ────────────────────────────────────────────────────────────
+  const Chip = ({ label, color, bg }) => (
+    <span style={{ display:'inline-flex', alignItems:'center', padding:'3px 10px', borderRadius:99, fontSize:11, fontWeight:600, color:color||u.text2, background:bg||`${color}12`, border:`1px solid ${color||u.border}20`, whiteSpace:'nowrap' }}>{label}</span>
+  );
+
+  const SectionWrap = ({ children, tight }) => (
+    <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:16, overflow:'hidden', marginBottom:tight?16:28 }}>
+      {children}
+    </div>
+  );
+
+  const SHdr = ({ num, title, sub, action }) => (
+    <div style={{ padding:`24px ${isTablet?32:20}px 20px`, borderBottom:`1px solid ${u.border}` }}>
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
+        <div style={{ display:'flex', alignItems:'baseline', gap:12 }}>
+          <span style={{ fontSize:10, fontWeight:700, color:u.text3, letterSpacing:2, fontFamily:L.mono }}>{num}</span>
+          <div>
+            <div style={{ fontSize:isTablet?18:16, fontWeight:700, color:u.text, letterSpacing:-0.3 }}>{title}</div>
+            {sub && <div style={{ fontSize:12, color:u.text3, marginTop:3, lineHeight:1.5 }}>{sub}</div>}
+          </div>
+        </div>
+        {action}
       </div>
     </div>
   );
 
-  // ── KPI Stat ─────────────────────────────────────────────────────────────────
-  const Stat = ({ val, label, sub, color }) => (
-    <div style={{ textAlign:"center", padding:"20px 12px" }}>
-      <div style={{ fontSize:34, fontWeight:800, color:color||u.text, fontFamily:L.mono, lineHeight:1, letterSpacing:-1 }}>{val}</div>
-      <div style={{ fontSize:12, fontWeight:600, color:u.text2, marginTop:6, textTransform:"uppercase", letterSpacing:.8 }}>{label}</div>
-      {sub && <div style={{ fontSize:11, color:u.text3, marginTop:3 }}>{sub}</div>}
+  const ExpandToggle = ({ id, label }) => (
+    <button onClick={() => toggle(id)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:`1px solid ${u.border}`, background:'transparent', color:u.text2, fontSize:12, fontWeight:500, fontFamily:L.font, cursor:'pointer', whiteSpace:'nowrap' }}>
+      <span style={{ fontSize:10, color:u.accent }}>{expanded[id]?'▾':'▸'}</span>
+      {expanded[id]?'Collapse':'Expand'} {label}
+    </button>
+  );
+
+  const DotLegend = () => (
+    <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
+      {[[DK,'Dark mode'],[LT,'Light mode'],[SIG,'Significant'],[MAR,'Marginal']].map(([c,l])=>(
+        <div key={l} style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <div style={{ width:8, height:8, borderRadius:'50%', background:c, flexShrink:0 }} />
+          <span style={{ fontSize:11, color:u.text3 }}>{l}</span>
+        </div>
+      ))}
     </div>
   );
 
   // ── Dumbbell chart ────────────────────────────────────────────────────────────
-  const Dumbbell = ({ rows }) => {
-    const LBL=164, W=240, RW=80, RH=38, H=rows.length*RH+28;
+  const Dumbbell = ({ rows, title }) => {
+    const RH = 40, LBL = isTablet?160:130, W = isTablet?260:200;
+    const H = rows.length*RH + 36;
     return (
-      <svg width="100%" viewBox={`0 0 ${LBL+W+RW} ${H}`} style={{ overflow:"visible" }}>
-        {/* Column headers */}
-        <text x={LBL+W*0.25} y={12} fontSize={9} fill={dk} textAnchor="middle" fontFamily={L.font} fontWeight="700">🌙 DARK</text>
-        <text x={LBL+W*0.75} y={12} fontSize={9} fill={lt} textAnchor="middle" fontFamily={L.font} fontWeight="700">☀️ LIGHT</text>
-        {rows.map(({ k, l, hi }, ri) => {
-          const t = tests[k]; const d = desc[k];
-          if (!t||!d) return null;
-          const dm = d.dark?.mean, lm = d.light?.mean;
-          if (dm==null||lm==null) return null;
-          const y = ri*RH+24;
-          const all = [dm,lm], mn=Math.min(...all), mx=Math.max(...all);
-          const range = mx-mn||1;
-          const pad = range*0.4;
-          const sc = v => LBL + ((v-mn+pad)/((mx-mn)+pad*2))*W;
-          const dkX = sc(dm), ltX = sc(lm);
-          const col = sigColor(t);
-          const better = hi?(dm>lm?"dark":"light"):(dm<lm?"dark":"light");
-          return (
-            <g key={k}>
-              {/* Row bg on hover-able area */}
-              <rect x={0} y={y-14} width={LBL+W+RW} height={RH-2} rx={4} fill={accentRow(t)} />
-              {/* Label */}
-              <text x={LBL-10} y={y+4} fontSize={11} fill={u.text2} textAnchor="end" fontFamily={L.font} fontWeight={t.sig?"700":"400"}>{l}</text>
-              {/* Connecting line */}
-              <line x1={dkX} y1={y} x2={ltX} y2={y} stroke={col} strokeWidth={1.5} opacity={0.5} />
-              {/* Dark dot */}
-              <circle cx={dkX} cy={y} r={6} fill={dk} opacity={0.9} />
-              {/* Light dot */}
-              <circle cx={ltX} cy={y} r={6} fill={lt} opacity={0.9} />
-              {/* Values */}
-              <text x={LBL+W+8} y={y-3} fontSize={9} fill={dk} fontFamily={L.mono}>{fv(dm)}</text>
-              <text x={LBL+W+8} y={y+9} fontSize={9} fill={lt} fontFamily={L.mono}>{fv(lm)}</text>
-              {/* Sig badge */}
-              {t.sig   && <text x={2} y={y+4} fontSize={9} fill={SIG} fontWeight="700">★</text>}
-              {t.marginal&&!t.sig&&<text x={2} y={y+4} fontSize={9} fill={MAR} fontWeight="700">~</text>}
-            </g>
-          );
-        })}
-        {/* Legend */}
-        <circle cx={LBL+8}  cy={H-6} r={5} fill={dk} />
-        <text x={LBL+16} y={H-3} fontSize={9} fill={dk} fontFamily={L.font}>Dark Mode</text>
-        <circle cx={LBL+82} cy={H-6} r={5} fill={lt} />
-        <text x={LBL+90} y={H-3} fontSize={9} fill={lt} fontFamily={L.font}>Light Mode</text>
-        <text x={LBL+155} y={H-3} fontSize={9} fill={SIG} fontFamily={L.font}>★ p &lt; {ALPHA}</text>
-        <text x={LBL+195} y={H-3} fontSize={9} fill={MAR} fontFamily={L.font}>~ marginal</text>
-      </svg>
+      <div>
+        {title && <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>{title}</div>}
+        <svg width="100%" viewBox={`0 0 ${LBL+W+90} ${H}`} style={{ overflow:'visible', display:'block' }}>
+          <text x={LBL+W*0.2} y={14} fontSize={9} fill={DK} textAnchor="middle" fontFamily={L.font} fontWeight="700" letterSpacing={1}>DARK</text>
+          <text x={LBL+W*0.8} y={14} fontSize={9} fill={LT} textAnchor="middle" fontFamily={L.font} fontWeight="700" letterSpacing={1}>LIGHT</text>
+          {rows.map(({ k, l, hi }, ri) => {
+            const t=tests[k], d=desc[k]; if (!t||!d) return null;
+            const dm=d.dark?.mean, lm=d.light?.mean; if (dm==null||lm==null) return null;
+            const all=[dm,lm], mn=Math.min(...all), mx=Math.max(...all), range=mx-mn||0.001;
+            const pad=range*0.5, sc=v=>LBL+((v-mn+pad)/((mx-mn)+pad*2))*W;
+            const dkX=sc(dm), ltX=sc(lm), y=ri*RH+28;
+            const isSig=t.sig, isMar=t.marginal, isNS=!isSig&&!isMar;
+            const textOp = isNS?0.55:1;
+            const better = hi?(dm>lm?'dark':'light'):(dm<lm?'dark':'light');
+            return (
+              <g key={k}>
+                <rect x={0} y={y-16} width={LBL+W+90} height={RH-2} rx={6} fill={isSig?`${SIG}06`:isMar?`${MAR}04`:'transparent'} />
+                <text x={LBL-12} y={y+4} fontSize={11.5} fill={u.text2} textAnchor="end" fontFamily={L.font} fontWeight={isSig?700:400} opacity={textOp}>{l}</text>
+                <line x1={Math.min(dkX,ltX)} y1={y} x2={Math.max(dkX,ltX)} y2={y} stroke={isSig?SIG:isMar?MAR:u.border} strokeWidth={isSig?2:1.5} opacity={isSig?.8:.5} />
+                <circle cx={dkX} cy={y} r={isSig?7:5} fill={DK} opacity={isNS?.6:.9} />
+                <circle cx={ltX} cy={y} r={isSig?7:5} fill={LT} opacity={isNS?.6:.9} />
+                <text x={LBL+W+12} y={y-4} fontSize={9.5} fill={DK} fontFamily={L.mono} opacity={textOp}>{fv(dm)}</text>
+                <text x={LBL+W+12} y={y+8} fontSize={9.5} fill={LT} fontFamily={L.mono} opacity={textOp}>{fv(lm)}</text>
+                {isSig && <circle cx={4} cy={y} r={3} fill={SIG} />}
+                {isMar && !isSig && <circle cx={4} cy={y} r={3} fill={MAR} />}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
     );
   };
 
   // ── Forest plot ───────────────────────────────────────────────────────────────
-  const ForestPlot = () => {
+  const Forest = () => {
     const rows = TEST_ROWS.filter(r => tests[r.k]?.cohensD!=null);
     if (!rows.length) return null;
-    const allD = rows.map(r => tests[r.k]?.cohensD).filter(v=>v!=null&&isFinite(v));
-    const maxD = allD.length ? Math.max(...allD.map(Math.abs)) : 0.5;
-    // Cap scale at ±1.5 for readability; wide CIs get arrow indicators
-    const SCALE = Math.min(Math.max(Math.ceil(maxD*4)/4 + 0.25, 0.75), 1.5);
-    const LBL=150,W=300,RH=32,PAD=20;
-    const H = rows.length*RH+PAD+32;
-    const sx = d => LBL + ((d+SCALE)/(SCALE*2))*W;
-    const zero = sx(0);
+    const allE = rows.flatMap(r=>{const t=tests[r.k];return t?.ci95?[Math.abs(t.ci95.lower),Math.abs(t.ci95.upper),Math.abs(t.cohensD)]:[Math.abs(t.cohensD)]}).filter(v=>v!=null&&isFinite(v));
+    const SCALE = Math.min(Math.ceil((allE.length?Math.max(...allE):1)*5)/5+0.3, 3);
+    const LBL=isTablet?155:130, W=isTablet?320:240, RH=36, PAD=24;
+    const H = rows.length*RH+PAD+40;
+    const sx = d => LBL+((d+SCALE)/(SCALE*2))*W;
     const gridV = [-1,-.5,0,.5,1].filter(v=>Math.abs(v)<=SCALE);
     return (
-      <svg width="100%" viewBox={`0 0 ${LBL+W+80} ${H}`} style={{ overflow:"visible" }}>
-        {/* Grid */}
-        <rect x={LBL} y={PAD} width={W} height={H-PAD-32} fill={u.fill} rx={4} />
+      <svg width="100%" viewBox={`0 0 ${LBL+W+80} ${H}`} style={{ overflow:'visible', display:'block' }}>
+        <rect x={LBL} y={PAD} width={W} height={H-PAD-38} rx={8} fill={u.fill} />
+        {[-.8,-.5,.5,.8].filter(v=>Math.abs(v)<=SCALE).map(v=>(
+          <rect key={v} x={v<0?sx(v<-.5?-SCALE:-0.8):sx(v<.5?.5:.8)} y={PAD} width={Math.abs(sx(Math.min(v,-.5))-sx(Math.max(v,-SCALE)))||Math.abs(sx(.8)-sx(.5))} height={H-PAD-38} fill={`${u.red}${Math.abs(v)>=.8?'0a':'06'}`} />
+        ))}
         {gridV.map(v=>(
           <g key={v}>
-            <line x1={sx(v)} y1={PAD} x2={sx(v)} y2={H-32} stroke={v===0?u.text3:u.border} strokeWidth={v===0?1.5:.5} strokeDasharray={v===0?"":"4,3"} />
-            <text x={sx(v)} y={H-20} fontSize={9} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{v===0?"0":(v>0?"+":"")+v}</text>
+            <line x1={sx(v)} y1={PAD} x2={sx(v)} y2={H-38} stroke={v===0?u.text3:u.border} strokeWidth={v===0?1.5:.5} strokeDasharray={v===0?'':' 4,3'} />
+            <text x={sx(v)} y={H-24} fontSize={9} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{v===0?'0':(v>0?'+':'')+v}</text>
           </g>
         ))}
-        {/* Threshold bands */}
-        <rect x={sx(-0.8)} y={PAD} width={sx(-0.5)-sx(-0.8)} height={H-PAD-32} fill={`${u.red}08`} />
-        <rect x={sx(0.5)} y={PAD} width={sx(0.8)-sx(0.5)} height={H-PAD-32} fill={`${u.red}08`} />
-        <rect x={sx(0.8)} y={PAD} width={W-(sx(0.8)-LBL)} height={H-PAD-32} fill={`${u.red}12`} />
-        <rect x={LBL} y={PAD} width={sx(-0.8)-LBL} height={H-PAD-32} fill={`${u.red}12`} />
         {rows.map(({ k, l }, ri) => {
-          const t = tests[k]; const d = t.cohensD; const ci = t.ci95;
-          const y = ri*RH+PAD+16;
-          const xd = sx(d);
-          const ciLr = ci?ci.lower:d-.3, ciRr = ci?ci.upper:d+.3;
-          const ciLc = Math.max(-SCALE,ciLr), ciRc = Math.min(SCALE,ciRr);
-          const clipL = ciLr<-SCALE, clipR = ciRr>SCALE;
-          const ciL = sx(ciLc), ciR = sx(ciRc);
-          const col = sigColor(t);
+          const t=tests[k], d=t.cohensD, ci=t.ci95, y=ri*RH+PAD+18;
+          const xd=sx(d);
+          const ciLr=ci?ci.lower:d-.3, ciRr=ci?ci.upper:d+.3;
+          const ciLc=Math.max(-SCALE,ciLr), ciRc=Math.min(SCALE,ciRr);
+          const clipL=ciLr<-SCALE, clipR=ciRr>SCALE;
+          const ciL=sx(ciLc), ciR=sx(ciRc);
+          const col=sigCol(t);
+          const isSig=t.sig||t.marginal;
           return (
             <g key={k}>
-              <rect x={0} y={y-12} width={LBL+W+80} height={28} rx={3} fill={accentRow(t)} />
-              <text x={LBL-8} y={y+4} fontSize={11} fill={u.text2} textAnchor="end" fontFamily={L.font} fontWeight={t.sig?"700":"400"}>{l}</text>
-              <line x1={ciL} y1={y} x2={ciR} y2={y} stroke={col} strokeWidth={1.5} opacity={.8} />
-              {!clipL && <line x1={ciL} y1={y-5} x2={ciL} y2={y+5} stroke={col} strokeWidth={1.5} />}
-              {!clipR && <line x1={ciR} y1={y-5} x2={ciR} y2={y+5} stroke={col} strokeWidth={1.5} />}
-              {clipL && <polygon points={`${ciL},${y} ${ciL+7},${y-4} ${ciL+7},${y+4}`} fill={col} opacity={.8} />}
-              {clipR && <polygon points={`${ciR},${y} ${ciR-7},${y-4} ${ciR-7},${y+4}`} fill={col} opacity={.8} />}
-              <rect x={xd-5} y={y-5} width={10} height={10} rx={2} fill={col} />
-              <text x={ciR+10} y={y+4} fontSize={10} fill={col} fontFamily={L.mono} fontWeight="600">{d>0?"+":""}{d}</text>
+              <rect x={0} y={y-14} width={LBL+W+80} height={32} rx={4} fill={rowBg(t)} />
+              <text x={LBL-10} y={y+4} fontSize={11} fill={u.text2} textAnchor="end" fontFamily={L.font} fontWeight={t.sig?700:400} opacity={t.sig||t.marginal?1:.65}>{l}</text>
+              <line x1={ciL} y1={y} x2={ciR} y2={y} stroke={col} strokeWidth={isSig?2:1.5} opacity={isSig?.9:.55} />
+              {!clipL&&<line x1={ciL} y1={y-5} x2={ciL} y2={y+5} stroke={col} strokeWidth={1.5} opacity={isSig?.9:.55} />}
+              {!clipR&&<line x1={ciR} y1={y-5} x2={ciR} y2={y+5} stroke={col} strokeWidth={1.5} opacity={isSig?.9:.55} />}
+              {clipL&&<polygon points={`${ciL},${y} ${ciL+8},${y-4} ${ciL+8},${y+4}`} fill={col} opacity={.7} />}
+              {clipR&&<polygon points={`${ciR},${y} ${ciR-8},${y-4} ${ciR-8},${y+4}`} fill={col} opacity={.7} />}
+              <rect x={xd-5} y={y-5} width={10} height={10} rx={2} fill={col} opacity={isSig?1:.7} />
+              <text x={ciR+(clipR?12:8)} y={y+4} fontSize={10} fill={col} fontFamily={L.mono} fontWeight={isSig?700:400}>{d>0?'+':''}{d}</text>
             </g>
           );
         })}
-        <text x={LBL+W/2} y={H-4} fontSize={9} fill={u.text3} textAnchor="middle" fontFamily={L.font}>← Light better · Cohen's d · Dark better →</text>
-        <text x={LBL+W/2} y={H-14} fontSize={8} fill={u.text3} textAnchor="middle" fontFamily={L.font}>shaded zones: |d|≥0.5 medium · |d|≥0.8 large</text>
+        <text x={LBL+W/2} y={H-10} fontSize={9} fill={u.text3} textAnchor="middle" fontFamily={L.font}>← Light mode higher · Cohen's d · Dark mode higher →</text>
+        <text x={LBL+W/2} y={H-22} fontSize={8} fill={u.text3} textAnchor="middle" fontFamily={L.font}>shaded bands: medium (|d|≥0.5) and large (|d|≥0.8) effect zones</text>
       </svg>
     );
   };
 
   // ── Scatter ───────────────────────────────────────────────────────────────────
-  const Scatter = ({ metric, label, fmtFn }) => {
-    const pts = pairs.map(p=>({ x:p.dark[metric], y:p.light[metric], n:p.name })).filter(p=>p.x!=null&&p.y!=null);
-    if (pts.length<2) return <div style={{ textAlign:"center", fontSize:12, color:u.text3, padding:20 }}>Insufficient data</div>;
-    const vals = pts.flatMap(p=>[p.x,p.y]);
-    const mn=Math.min(...vals), mx=Math.max(...vals), range=mx-mn||1;
-    const P=32, SZ=190;
-    const sc = v => P+((v-mn)/range)*(SZ-P*2);
-    const f = fmtFn||fv;
-    const dkBetter = pts.filter(p=>p.x>p.y).length;
+  const Scatter = ({ metric, label, fmt }) => {
+    const pts=pairs.map(p=>({ x:p.dark[metric],y:p.light[metric],n:p.name })).filter(p=>p.x!=null&&p.y!=null);
+    if (pts.length<2) return <div style={{ padding:20, textAlign:'center', fontSize:12, color:u.text3 }}>—</div>;
+    const vals=pts.flatMap(p=>[p.x,p.y]), mn=Math.min(...vals), mx=Math.max(...vals), range=mx-mn||1;
+    const SZ=180, P=28, sc=v=>P+((v-mn)/range)*(SZ-P*2);
+    const dkBetter=pts.filter(p=>(metric==='rt'||metric==='nasa'||metric==='err')?p.x<p.y:p.x>p.y).length;
+    const f=fmt||(v=>fv(v));
     return (
-      <div style={{ textAlign:"center" }}>
-        <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:8, letterSpacing:.3 }}>{label}</div>
-        <svg width={SZ} height={SZ} viewBox={`0 0 ${SZ} ${SZ}`} style={{ overflow:"visible" }}>
-          {/* Equality line */}
+      <div style={{ textAlign:'center' }}>
+        <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:10 }}>{label}</div>
+        <svg width={SZ} height={SZ} viewBox={`0 0 ${SZ} ${SZ}`} style={{ overflow:'visible', display:'inline-block' }}>
+          <rect x={P} y={P} width={SZ-P*2} height={SZ-P*2} rx={4} fill={u.fill} />
           <line x1={P} y1={SZ-P} x2={SZ-P} y2={P} stroke={u.border} strokeWidth={1.5} strokeDasharray="5,3" />
-          {/* Axes */}
-          <line x1={P} y1={SZ-P} x2={SZ-P} y2={SZ-P} stroke={u.border} strokeWidth={1} />
-          <line x1={P} y1={P}    x2={P}    y2={SZ-P} stroke={u.border} strokeWidth={1} />
-          {/* Points */}
-          {pts.map((p,i)=>(
-            <g key={i}>
-              <circle cx={sc(p.x)} cy={SZ-sc(p.y)} r={5.5} fill={p.x>p.y?dk:lt} opacity={.85} stroke={u.bg} strokeWidth={1} />
-            </g>
-          ))}
-          {/* Labels */}
-          <text x={P+(SZ-P*2)/2} y={SZ-4} fontSize={9} fill={dk} textAnchor="middle" fontFamily={L.font} fontWeight="600">🌙 Dark</text>
-          <text x={P-4} y={P+(SZ-P*2)/2} fontSize={9} fill={lt} textAnchor="middle" transform={`rotate(-90 ${P-10} ${P+(SZ-P*2)/2})`} fontFamily={L.font} fontWeight="600">☀️ Light</text>
-          {/* Min/max tick labels */}
-          <text x={P}    y={SZ-P+12} fontSize={8} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{f(mn)}</text>
-          <text x={SZ-P} y={SZ-P+12} fontSize={8} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{f(mx)}</text>
+          {pts.map((p,i)=><circle key={i} cx={sc(p.x)} cy={SZ-sc(p.y)} r={5} fill={(metric==='rt'||metric==='nasa'||metric==='err')?(p.x<p.y?DK:LT):(p.x>p.y?DK:LT)} opacity={.85} stroke={u.bg} strokeWidth={1.5} />)}
+          <text x={P+(SZ-P*2)/2} y={SZ-6} fontSize={9} fill={DK} textAnchor="middle" fontFamily={L.font} fontWeight="600">Dark</text>
+          <text x={12} y={P+(SZ-P*2)/2} fontSize={9} fill={LT} textAnchor="middle" transform={`rotate(-90 12 ${P+(SZ-P*2)/2})`} fontFamily={L.font} fontWeight="600">Light</text>
         </svg>
-        <div style={{ display:"flex", justifyContent:"center", gap:16, marginTop:6, fontSize:10, color:u.text3 }}>
-          <span style={{ color:dk }}>● Dark better: {dkBetter}</span>
-          <span style={{ color:lt }}>● Light better: {pts.length-dkBetter}</span>
+        <div style={{ fontSize:11, color:u.text3, marginTop:6 }}>
+          <span style={{ color:DK, fontWeight:600 }}>{dkBetter}</span> dark · <span style={{ color:LT, fontWeight:600 }}>{pts.length-dkBetter}</span> light
         </div>
       </div>
     );
   };
 
-  // ── Task bar chart ────────────────────────────────────────────────────────────
-  const TaskChart = () => {
-    const tasks = taskBreak.filter(t=>t.dark?.n>0||t.light?.n>0);
-    if (!tasks.length) return null;
-    const BW=14, GAP=6, GW=BW*2+GAP, GRP=8;
-    const W2 = tasks.length*(GW+GRP)+60;
-    const H2 = 130;
-    return (
-      <svg width="100%" viewBox={`0 0 ${W2} ${H2+24}`} style={{ overflow:"visible" }}>
-        {[0,.25,.5,.75,1].map(v=>(
-          <g key={v}>
-            <line x1={36} y1={H2-v*H2} x2={W2} y2={H2-v*H2} stroke={u.border} strokeWidth={.5} />
-            <text x={34} y={H2-v*H2+3} fontSize={8} fill={u.text3} textAnchor="end" fontFamily={L.mono}>{Math.round(v*100)}%</text>
-          </g>
-        ))}
-        {tasks.map((task,ti)=>{
-          const x=40+ti*(GW+GRP);
-          const dh=(task.dark?.mean||0)*H2;
-          const lh=(task.light?.mean||0)*H2;
-          const ttest = resTaskTests?.find(t=>t.tid===task.tid);
-          return (
-            <g key={task.tid}>
-              <rect x={x}    y={H2-dh} width={BW} height={dh} rx={2} fill={dk} opacity={.85} />
-              <rect x={x+BW+GAP} y={H2-lh} width={BW} height={lh} rx={2} fill={lt} opacity={.85} />
-              <text x={x+GW/2} y={H2+13} fontSize={8} fill={u.text2} textAnchor="middle" fontFamily={L.font}>{task.label?.split(" ")[0]}</text>
-              {ttest?.test?.sig && <text x={x+GW/2} y={H2-Math.max(dh,lh)-4} fontSize={9} fill={SIG} textAnchor="middle">*</text>}
-            </g>
-          );
-        })}
-        <rect x={40} y={H2+18} width={BW} height={5} rx={1} fill={dk} />
-        <text x={58} y={H2+23} fontSize={9} fill={dk} fontFamily={L.font}>Dark</text>
-        <rect x={80} y={H2+18} width={BW} height={5} rx={1} fill={lt} />
-        <text x={98} y={H2+23} fontSize={9} fill={lt} fontFamily={L.font}>Light</text>
-        <text x={130} y={H2+23} fontSize={9} fill={SIG} fontFamily={L.font}>* p &lt; .05</text>
-      </svg>
-    );
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  const pad = isTablet?'28px 32px':'20px 18px';
+  const TH = { padding:'9px 14px', fontSize:11, fontWeight:600, color:u.text3, background:u.fill, borderBottom:`1.5px solid ${u.border}`, textAlign:'left', whiteSpace:'nowrap', letterSpacing:.3 };
+  const TD = (c,mono) => ({ padding:'8px 14px', fontSize:12, color:c||u.text, borderBottom:`1px solid ${u.border}`, whiteSpace:'nowrap', fontFamily:mono?L.mono:L.font });
+
+  // ── Finding cards ─────────────────────────────────────────────────────────────
+  const topFindings = () => {
+    const findings = [];
+    TEST_ROWS.forEach(({ k, l, hi }) => {
+      const t=tests[k], d=desc[k]; if (!t||!t.sig&&!t.marginal) return;
+      const dm=d?.dark?.mean, lm=d?.light?.mean; if (dm==null||lm==null) return;
+      const betterLabel = hi?(dm>lm?'Dark':'Light'):(dm<lm?'Dark':'Light');
+      const betterColor = betterLabel==='Dark'?DK:LT;
+      const strength = Math.abs(t.cohensD)>=.8?'large':Math.abs(t.cohensD)>=.5?'medium':'small';
+      findings.push({ metric:l, better:betterLabel, betterColor, d:t.cohensD, sig:t.sig, strength });
+    });
+    // If no significant, add top effect-size findings
+    if (findings.length===0) {
+      const sorted = TEST_ROWS.map(r => ({ ...r, t:tests[r.k] })).filter(r=>r.t?.cohensD!=null).sort((a,b)=>Math.abs(b.t.cohensD)-Math.abs(a.t.cohensD)).slice(0,3);
+      sorted.forEach(({ k, l, hi }) => {
+        const t=tests[k], d=desc[k]; if (!t) return;
+        const dm=d?.dark?.mean, lm=d?.light?.mean; if (dm==null||lm==null) return;
+        const betterLabel = hi?(dm>lm?'Dark':'Light'):(dm<lm?'Dark':'Light');
+        findings.push({ metric:l, better:betterLabel, betterColor:betterLabel==='Dark'?DK:LT, d:t.cohensD, sig:false, strength:Math.abs(t.cohensD)>=.5?'medium':'small', trend:true });
+      });
+    }
+    return findings.slice(0,4);
   };
-
-  // ── Table styles ──────────────────────────────────────────────────────────────
-  const TH = { padding:"9px 12px", fontSize:11, fontWeight:600, color:u.text3, background:u.fill, borderBottom:`1.5px solid ${u.border}`, textAlign:"left", whiteSpace:"nowrap", letterSpacing:.3 };
-  const TD = (c,mono) => ({ padding:"9px 12px", fontSize:12, color:c||u.text, borderBottom:`1px solid ${u.border}`, whiteSpace:"nowrap", fontFamily:mono?L.mono:L.font });
-  const Badge = ({ sig, mar, label }) => {
-    const c = sig?SIG:mar?MAR:u.text3;
-    return <span style={{ padding:"2px 8px", borderRadius:99, fontSize:11, fontWeight:600, background:sig?`${SIG}15`:mar?`${MAR}12`:`${u.text3}10`, color:c, border:`1px solid ${c}22`, whiteSpace:"nowrap" }}>{label}</span>;
-  };
-
-  const wrap = (content) => <div style={{ background:u.bg, borderRadius:12, border:`1px solid ${u.border}`, marginBottom:20, overflow:"hidden" }}>{content}</div>;
-  const padded = (content) => <div style={{ padding:"24px 28px" }}>{content}</div>;
-
-  // ── NASA-TLX comparison ───────────────────────────────────────────────────────
-  const NASA_DIMS2 = [
-    {k:"nasaMD",l:"Mental Demand"},{k:"nasaPD",l:"Physical Demand"},{k:"nasaTD",l:"Temporal"},
-    {k:"nasaPE",l:"Performance"},{k:"nasaEF",l:"Effort"},{k:"nasFR",l:"Frustration"}
-  ];
+  const findings = topFindings();
 
   return (
-    <div style={{ fontFamily:L.font, maxWidth:900, padding:"28px 24px 40px" }} className="au">
+    <div style={{ fontFamily:L.font, padding:isTablet?'28px 28px 48px':'16px 14px 40px', maxWidth:1000 }} className="au">
 
-      {/* ── 01 EXECUTIVE SUMMARY ── */}
-      {wrap(<>
-        {padded(<SecHdr num="01" title="Executive Summary" sub={`Within-subjects experiment · Paired t-tests · Bonferroni α = ${ALPHA} · n = ${N} complete pairs`} />)}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(4,1fr)", borderTop:`1px solid ${u.border}` }}>
-          {[
-            { val:N,              label:"Participants",      sub:"complete pairs",                  color:u.accent  },
-            { val:`${sigRows.length}/11`,  label:"Significant",    sub:"Bonferroni-corrected",           color:sigRows.length?SIG:u.text3 },
-            { val:`${margRows.length}/11`, label:"Marginal",       sub:"uncorrected p < .05",            color:margRows.length?MAR:u.text3 },
-            { val:ALPHA,          label:"Adjusted α",       sub:"0.05 ÷ 11 tests",                 color:u.teal    },
-          ].map((s,i) => <div key={i} style={{ borderRight:i<3?`1px solid ${u.border}`:"none" }}><Stat {...s} /></div>)}
-        </div>
-        {padded(
-          <div style={{ display:"flex", gap:12, flexWrap:"wrap", alignItems:"center" }}>
-            <div style={{ flex:1, minWidth:200, padding:"14px 18px", borderRadius:8, background:sigRows.length?`${SIG}10`:`${u.text3}08`, border:`1px solid ${sigRows.length?SIG:u.border}` }}>
-              <div style={{ fontSize:12, fontWeight:600, color:sigRows.length?SIG:u.text2, marginBottom:4 }}>
-                {sigRows.length ? `${sigRows.length} Significant Result${sigRows.length>1?"s":""} Found` : "No Significant Differences Found"}
+      {/* ══ 01 EXECUTIVE SUMMARY ══════════════════════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="01" title="Executive Summary"
+          sub={`Paired-samples t-tests · ${N} complete pairs · Bonferroni α = ${ALPHA} · ${NT} simultaneous tests`} />
+        <div style={{ padding:pad }}>
+
+          {/* KPI row */}
+          <div style={{ display:'grid', gridTemplateColumns:`repeat(${isTablet?4:2},1fr)`, gap:isTablet?0:1, marginBottom:28, borderRadius:12, overflow:'hidden', border:`1px solid ${u.border}` }}>
+            {[
+              { v:N, l:'Pairs', s:'complete participants', c:u.accent },
+              { v:`${sigRows.length}/${NT}`, l:'Significant', s:`Bonferroni p < ${ALPHA}`, c:sigRows.length?SIG:u.text3 },
+              { v:`${margRows.length}/${NT}`, l:'Marginal', s:'uncorrected p < .05', c:margRows.length?MAR:u.text3 },
+              { v:ALPHA, l:'Adjusted α', s:'0.05 ÷ 11 tests', c:u.teal },
+            ].map(({ v,l,s,c },i,a) => (
+              <div key={l} style={{ padding:'20px 16px', textAlign:'center', borderRight:i<a.length-1?`1px solid ${u.border}`:'none', borderBottom:!isTablet&&i<2?`1px solid ${u.border}`:'none' }}>
+                <div style={{ fontSize:30, fontWeight:800, color:c, fontFamily:L.mono, lineHeight:1, letterSpacing:-1 }}>{v}</div>
+                <div style={{ fontSize:11, fontWeight:600, color:u.text2, marginTop:6, textTransform:'uppercase', letterSpacing:.8 }}>{l}</div>
+                <div style={{ fontSize:10, color:u.text3, marginTop:2 }}>{s}</div>
               </div>
-              <div style={{ fontSize:12, color:u.text3, lineHeight:1.6 }}>
-                {sigRows.length ? sigRows.map(r=>`${r.l} (d=${tests[r.k].cohensD})`).join(" · ") : `Effect sizes (Cohen's d) and 95% CIs are the primary basis for interpretation at n = ${N}.`}
-              </div>
-            </div>
-            <div style={{ padding:"14px 18px", borderRadius:8, background:u.fill, border:`1px solid ${u.border}` }}>
-              <div style={{ fontSize:11, color:u.text3, marginBottom:3, fontWeight:600, textTransform:"uppercase", letterSpacing:.8 }}>Sample</div>
-              <div style={{ fontSize:13, fontWeight:700, color:u[sz.c]||u.text }}>{sz.l}</div>
-              <div style={{ fontSize:11, color:u.text3, marginTop:2 }}>n={N} pairs · {cb.ratio} balance</div>
-            </div>
-            <div style={{ padding:"14px 18px", borderRadius:8, background:u.fill, border:`1px solid ${u.border}` }}>
-              <div style={{ fontSize:11, color:u.text3, marginBottom:3, fontWeight:600, textTransform:"uppercase", letterSpacing:.8 }}>Counterbalance</div>
-              <div style={{ fontSize:13, fontWeight:700, color:cb.balanced?SIG:MAR }}>{cb.balanced?"✓ Balanced":"⚠ Imbalanced"}</div>
-              <div style={{ fontSize:11, color:u.text3, marginTop:2 }}>DL: {cb.dl} · LD: {cb.ld}</div>
-            </div>
+            ))}
           </div>
-        )}
-      </>)}
 
-      {/* ── 02 OUTCOME OVERVIEW ── */}
-      {wrap(<>
-        {padded(<>
-          <SecHdr num="02" title="Outcome Overview" sub="All 11 dependent variables — dark vs light mean comparison. ★ = Bonferroni significant · ~ = marginal." />
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:32 }}>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1, textTransform:"uppercase", marginBottom:14 }}>Performance Metrics</div>
-              <Dumbbell rows={TEST_ROWS.slice(0,4)} />
+          {/* Sample + counterbalance status */}
+          <div style={{ display:'grid', gridTemplateColumns:isTablet?'1fr 1fr 1fr':'1fr', gap:12, marginBottom:28 }}>
+            <div style={{ padding:'14px 18px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+              <div style={{ fontSize:10, fontWeight:600, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Sample Adequacy</div>
+              <div style={{ fontSize:15, fontWeight:700, color:u[sz.c]||u.text }}>{sz.l}</div>
+              <div style={{ fontSize:11, color:u.text3, marginTop:3 }}>{sz.note||'Effect sizes are more reliable than p-values at this n.'}</div>
             </div>
-            <div>
-              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1, textTransform:"uppercase", marginBottom:14 }}>Subjective Measures</div>
-              <Dumbbell rows={TEST_ROWS.slice(4)} />
+            <div style={{ padding:'14px 18px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+              <div style={{ fontSize:10, fontWeight:600, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Counterbalance</div>
+              <div style={{ fontSize:15, fontWeight:700, color:cb.balanced?SIG:MAR }}>{cb.balanced?'Balanced':'Imbalanced'}</div>
+              <div style={{ fontSize:11, color:u.text3, marginTop:3 }}>DL group: {cb.dl} · LD group: {cb.ld}</div>
             </div>
+            {demoSummary && <div style={{ padding:'14px 18px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+              <div style={{ fontSize:10, fontWeight:600, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Demographics</div>
+              <div style={{ fontSize:15, fontWeight:700, color:u.text }}>n = {demoSummary.n}</div>
+              <div style={{ fontSize:11, color:u.text3, marginTop:3 }}>{demoSummary.age?`Age ${demoSummary.age.mean}±${demoSummary.age.sd}`:'—'}</div>
+            </div>}
           </div>
-        </>)}
-      </>)}
 
-      {/* ── 03 INDIVIDUAL DATA ── */}
-      {wrap(<>
-        {padded(<>
-          <SecHdr num="03" title="Individual Participant Scatter" sub="Each dot = one participant. Points above the diagonal = Light mode higher. Points below = Dark mode higher." />
-          <div style={{ display:"flex", gap:24, flexWrap:"wrap", justifyContent:"center" }}>
-            <Scatter metric="acc"  label="Accuracy"       fmtFn={v=>v!=null?(v*100).toFixed(0)+"%":""} />
-            <Scatter metric="rt"   label="Response Time (ms)" fmtFn={v=>v!=null?Math.round(v)+"ms":""} />
-            <Scatter metric="nasa" label="NASA-TLX Total" />
-          </div>
-        </>)}
-      </>)}
-
-      {/* ── 04 EFFECT SIZES ── */}
-      {wrap(<>
-        {padded(<>
-          <SecHdr num="04" title="Effect Size Forest Plot" sub="Cohen's d with 95% confidence intervals. Square = point estimate. Small |d|≥0.2 · Medium |d|≥0.5 · Large |d|≥0.8." />
-          <ForestPlot />
-        </>)}
-      </>)}
-
-      {/* ── 05 STATISTICAL TESTS ── */}
-      {wrap(<>
-        {padded(<SecHdr num="05" title="Full Statistical Results" sub={`Paired-samples t-tests with Bonferroni correction (α = ${ALPHA}). Significant rows highlighted.`} />)}
-        <div style={{ overflowX:"auto" }}>
-          <table style={{ width:"100%", borderCollapse:"collapse" }}>
-            <thead>
-              <tr style={{ background:u.fill }}>
-                {["Variable","🌙 M (SD)","☀️ M (SD)","Δ Mean","95% CI","t (df)","p raw","p Bonf.","Cohen's d","Power","Result"].map(h=><th key={h} style={TH}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {TEST_ROWS.map(({ k, l }) => {
-                const t=tests[k], d=desc[k]; if (!t) return null;
-                const dm=d?.dark?.mean, dsd=d?.dark?.sd, lm=d?.light?.mean, lsd=d?.light?.sd;
-                const diff=dm!=null&&lm!=null?dm-lm:null;
-                const pAdj=t.p!=null?Math.min(1,t.p*N_TESTS):null;
-                const pw=resPower?.[k];
-                return (
-                  <tr key={k} style={{ background:accentRow(t) }}>
-                    <td style={{ ...TD(u.text), fontWeight:t.sig?700:400 }}>{l}</td>
-                    <td style={{ ...TD(dk,true) }}>{fv(dm)} <span style={{ color:u.text3 }}>({fv(dsd)})</span></td>
-                    <td style={{ ...TD(lt,true) }}>{fv(lm)} <span style={{ color:u.text3 }}>({fv(lsd)})</span></td>
-                    <td style={{ ...TD(diff!=null?(diff>0?SIG:u.red):u.text3,true) }}>{diff!=null?(diff>0?"+":"")+fv(diff):"—"}</td>
-                    <td style={{ ...TD(u.text3,true), fontSize:10 }}>{t.ci95?`[${fv(t.ci95.lower)}, ${fv(t.ci95.upper)}]`:"—"}</td>
-                    <td style={{ ...TD(u.teal,true) }}>{t.t} ({t.df})</td>
-                    <td style={{ ...TD(t.p<0.05?MAR:u.text3,true) }}>{t.p?.toFixed(4)||"—"}</td>
-                    <td style={{ ...TD(t.sig?SIG:t.marginal?MAR:u.text3,true), fontWeight:t.sig?700:400 }}>{pAdj?.toFixed(4)||"—"}</td>
-                    <td style={{ ...TD(dColor(t.cohensD),true) }}>{t.cohensD!=null?(t.cohensD>0?"+":"")+t.cohensD:"—"}</td>
-                    <td style={{ ...TD(pw>=.8?SIG:pw>=.5?MAR:u.text3,true) }}>{pw!=null?(pw*100).toFixed(0)+"%":"—"}</td>
-                    <td style={{ padding:"9px 12px", borderBottom:`1px solid ${u.border}` }}><Badge sig={t.sig} mar={t.marginal} label={t.sig?"★ Sig.":t.marginal?"~ Marginal":"n.s."} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {/* Findings highlight */}
+          {findings.length>0 && <>
+            <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1.2, textTransform:'uppercase', marginBottom:12 }}>
+              {sigRows.length?'Significant Findings':'Largest Observed Trends'}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:isTablet?`repeat(${Math.min(findings.length,2)},1fr)`:'1fr', gap:10 }}>
+              {findings.map(({ metric,better,betterColor,d,sig,strength,trend }) => (
+                <div key={metric} style={{ padding:'14px 18px', borderRadius:10, border:`1.5px solid ${sig?SIG:trend?u.border:MAR}${sig?'':trend?'':30}`, background:sig?`${SIG}06`:`${u.fill}` }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:6 }}>
+                    <span style={{ fontSize:13, fontWeight:600, color:u.text }}>{metric}</span>
+                    {sig&&<Chip label="Significant" color={SIG} />}
+                    {!sig&&trend&&<Chip label="Trend" color={u.text3} />}
+                    {!sig&&!trend&&<Chip label="Marginal" color={MAR} />}
+                  </div>
+                  <div style={{ fontSize:13, color:u.text2 }}>
+                    <span style={{ color:betterColor, fontWeight:700 }}>{better} mode</span> performed better · <span style={{ fontFamily:L.mono, color:dCol(d) }}>d = {d>0?'+':''}{d}</span> ({strength} effect)
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>}
         </div>
-        <div style={{ padding:"10px 16px", fontSize:11, color:u.text3, background:u.fill, borderTop:`1px solid ${u.border}` }}>
-          Δ Mean = Dark − Light · p Bonf. = min(raw p × 11, 1) · Power computed at α = {ALPHA} · {N_TESTS} simultaneous tests
-          {sz.preliminary&&<span style={{ color:MAR }}> · † Preliminary: effect size (d) more reliable than p-values at n={N}</span>}
-        </div>
-      </>)}
+      </SectionWrap>
 
-      {/* ── 06 PER-TASK ANALYSIS ── */}
-      {taskBreak.length>0 && wrap(<>
-        {padded(<>
-          <SecHdr num="06" title="Per-Task Analysis" sub="Mean accuracy per task type by theme condition. * = uncorrected p < .05." />
-          <div style={{ overflowX:"auto", marginBottom:24 }}><TaskChart /></div>
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead><tr>{["Task","🌙 Dark M","🌙 SD","☀️ Light M","☀️ SD","Δ","n","t","p"].map(h=><th key={h} style={TH}>{h}</th>)}</tr></thead>
+      {/* ══ 02 OUTCOME OVERVIEW ═══════════════════════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="02" title="Outcome Overview"
+          sub="Dark vs light mode mean comparison across all dependent variables. Filled circles = group mean. Highlighted rows reached statistical significance." />
+        <div style={{ padding:pad }}>
+          <div style={{ display:'grid', gridTemplateColumns:isDesktop?'1fr 1fr':'1fr', gap:32 }}>
+            <Dumbbell rows={TEST_ROWS.slice(0,4)} title="Performance" />
+            <Dumbbell rows={TEST_ROWS.slice(4)} title="Workload & Comfort" />
+          </div>
+          <div style={{ marginTop:20, paddingTop:16, borderTop:`1px solid ${u.border}` }}>
+            <DotLegend />
+          </div>
+        </div>
+      </SectionWrap>
+
+      {/* ══ 03 EFFECT SIZES ════════════════════════════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="03" title="Effect Sizes"
+          sub="Cohen's d with 95% confidence intervals. Squares = point estimates. Shaded bands mark medium (|d| ≥ 0.5) and large (|d| ≥ 0.8) effect zones." />
+        <div style={{ padding:pad, overflowX:'auto' }}>
+          <Forest />
+        </div>
+      </SectionWrap>
+
+      {/* ══ 04 INDIVIDUAL DATA ════════════════════════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="04" title="Individual Participant Data"
+          sub="Each point represents one participant. Points above the diagonal = Light mode higher; below = Dark mode higher." />
+        <div style={{ padding:pad }}>
+          <div style={{ display:'flex', gap:isTablet?32:20, flexWrap:'wrap', justifyContent:'center' }}>
+            <Scatter metric="acc"  label="Accuracy"    fmt={v=>v!=null?(v*100).toFixed(0)+'%':''} />
+            <Scatter metric="rt"   label="Response Time" fmt={v=>v!=null?Math.round(v)+'ms':''} />
+            <Scatter metric="nasa" label="NASA-TLX" />
+          </div>
+          <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${u.border}` }}>
+            <DotLegend />
+          </div>
+        </div>
+      </SectionWrap>
+
+      {/* ══ 05 FULL STATISTICAL TABLE (collapsible) ═══════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="05" title="Statistical Test Results"
+          sub={`Paired-samples t-tests · Bonferroni-corrected · highlighted rows = significant or marginal · n = ${N} pairs`}
+          action={<ExpandToggle id="stats" label="table" />} />
+        {expanded.stats && (
+          <div style={{ overflowX:'auto' }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
+              <thead>
+                <tr>{['Variable','Dark M (SD)','Light M (SD)','Δ Mean','95% CI','t (df)','p','p (adj.)','d','Power','Result'].map(h=><th key={h} style={TH}>{h}</th>)}</tr>
+              </thead>
               <tbody>
-                {taskBreak.filter(t=>t.dark?.n>0||t.light?.n>0).map((task,i)=>{
-                  const diff=task.dark?.mean!=null&&task.light?.mean!=null?task.dark.mean-task.light.mean:null;
-                  const tt=resTaskTests?.find(t=>t.tid===task.tid)?.test;
+                {TEST_ROWS.map(({ k,l }) => {
+                  const t=tests[k], d=desc[k]; if (!t) return null;
+                  const dm=d?.dark?.mean, dsd=d?.dark?.sd, lm=d?.light?.mean, lsd=d?.light?.sd;
+                  const diff=dm!=null&&lm!=null?dm-lm:null;
+                  const pAdj=t.p!=null?Math.min(1,t.p*NT):null;
+                  const pw=resPower?.[k];
+                  const isNS=!t.sig&&!t.marginal;
                   return (
-                    <tr key={task.tid} style={{ background:tt?.sig?`${SIG}08`:i%2===0?"transparent":u.fill+"66" }}>
-                      <td style={{ ...TD(u.text), fontWeight:500 }}>{task.label}</td>
-                      <td style={TD(dk,true)}>{fv(task.dark?.mean)}</td>
-                      <td style={TD(u.text3,true)}>{fv(task.dark?.sd)}</td>
-                      <td style={TD(lt,true)}>{fv(task.light?.mean)}</td>
-                      <td style={TD(u.text3,true)}>{fv(task.light?.sd)}</td>
-                      <td style={TD(diff!=null?(diff>0?SIG:u.red):u.text3,true)}>{diff!=null?(diff>0?"+":"")+fv(diff):"—"}</td>
-                      <td style={TD(u.text3,true)}>{Math.max(task.dark?.n||0,task.light?.n||0)}</td>
-                      <td style={TD(u.teal,true)}>{tt?.t||"—"}</td>
-                      <td style={TD(tt?.sig?SIG:tt?.p<.05?MAR:u.text3,true)}>{tt?.p?.toFixed(3)||"—"}</td>
+                    <tr key={k} style={{ background:rowBg(t), opacity:isNS?.75:1 }}>
+                      <td style={{ ...TD(u.text), fontWeight:t.sig?700:400 }}>{l}</td>
+                      <td style={TD(DK,true)}>{fv(dm)} <span style={{ color:u.text3 }}>({fv(dsd)})</span></td>
+                      <td style={TD(LT,true)}>{fv(lm)} <span style={{ color:u.text3 }}>({fv(lsd)})</span></td>
+                      <td style={{ ...TD(diff!=null?(diff>0?SIG:u.red):u.text3,true) }}>{diff!=null?(diff>0?'+':'')+fv(diff):'—'}</td>
+                      <td style={{ ...TD(u.text3,true), fontSize:10 }}>{t.ci95?`[${fv(t.ci95.lower)}, ${fv(t.ci95.upper)}]`:'—'}</td>
+                      <td style={TD(u.teal,true)}>{t.t} ({t.df})</td>
+                      <td style={TD(t.p<.05?MAR:u.text3,true)}>{t.p?.toFixed(4)||'—'}</td>
+                      <td style={{ ...TD(t.sig?SIG:t.marginal?MAR:u.text3,true), fontWeight:t.sig?700:400 }}>{pAdj?.toFixed(4)||'—'}</td>
+                      <td style={TD(dCol(t.cohensD),true)}>{t.cohensD!=null?(t.cohensD>0?'+':'')+t.cohensD:'—'}</td>
+                      <td style={TD(pw>=.8?SIG:pw>=.5?MAR:u.text3,true)}>{pw!=null?(pw*100).toFixed(0)+'%':'—'}</td>
+                      <td style={{ padding:'8px 14px', borderBottom:`1px solid ${u.border}` }}>
+                        <Chip label={t.sig?'★ Sig':t.marginal?'~ Mar':'n.s.'} color={sigCol(t)} />
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            <div style={{ padding:'10px 16px', fontSize:11, color:u.text3, background:u.fill, borderTop:`1px solid ${u.border}` }}>
+              Δ = Dark − Light · p adj. = min(raw p × {NT}, 1) · Power at α = {ALPHA} · Non-significant rows shown at reduced opacity
+            </div>
           </div>
-        </>)}
-      </>)}
+        )}
+        {!expanded.stats && (
+          <div style={{ padding:pad, paddingTop:16 }}>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+              {sigRows.length===0&&margRows.length===0
+                ? <span style={{ fontSize:13, color:u.text3 }}>No tests reached significance at α = {ALPHA}. Expand to view full results.</span>
+                : <>
+                    {sigRows.map(r=><Chip key={r.k} label={`${r.l}: d=${tests[r.k].cohensD}`} color={SIG} />)}
+                    {margRows.map(r=><Chip key={r.k} label={`${r.l}: p=${tests[r.k].p?.toFixed(3)}`} color={MAR} />)}
+                  </>
+              }
+            </div>
+          </div>
+        )}
+      </SectionWrap>
 
-      {/* ── 07 SUBJECTIVE MEASURES ── */}
-      {wrap(<>
-        {padded(<>
-          <SecHdr num="07" title="Subjective Measures" sub="NASA-TLX cognitive workload subscales and comfort ratings by theme condition." />
-          <div style={{ display:"grid", gridTemplateColumns:"auto 1fr", gap:32, alignItems:"start" }}>
+      {/* ══ 06 PER-TASK ANALYSIS ══════════════════════════════════════════════ */}
+      {taskBreak.length>0 && <SectionWrap>
+        <SHdr num="06" title="Per-Task Analysis"
+          sub="Mean accuracy per task by theme. Bars show group performance. Asterisk (*) marks tasks with uncorrected p < .05." />
+        <div style={{ padding:pad }}>
+          {/* Bar chart */}
+          <div style={{ overflowX:'auto', marginBottom:20 }}>
+            {(() => {
+              const tasks=taskBreak.filter(t=>t.dark?.n>0||t.light?.n>0);
+              if (!tasks.length) return null;
+              const BW=16, GAP=6, GRP=10, W=tasks.length*(BW*2+GAP+GRP)+48, H=110;
+              return (
+                <svg width="100%" viewBox={`0 0 ${W} ${H+20}`} style={{ minWidth:Math.min(W,isTablet?600:320) }}>
+                  {[0,.25,.5,.75,1].map(v=>(
+                    <g key={v}>
+                      <line x1={32} y1={H-v*H} x2={W} y2={H-v*H} stroke={u.border} strokeWidth={.5} />
+                      <text x={30} y={H-v*H+3} fontSize={8} fill={u.text3} textAnchor="end" fontFamily={L.mono}>{Math.round(v*100)}%</text>
+                    </g>
+                  ))}
+                  {tasks.map((task,ti)=>{
+                    const x=36+ti*(BW*2+GAP+GRP);
+                    const dh=(task.dark?.mean||0)*H, lh=(task.light?.mean||0)*H;
+                    const tt=TT?.find(t=>t.tid===task.tid)?.test;
+                    return (
+                      <g key={task.tid}>
+                        <rect x={x}      y={H-dh} width={BW} height={dh} rx={2} fill={DK} opacity={.85} />
+                        <rect x={x+BW+GAP} y={H-lh} width={BW} height={lh} rx={2} fill={LT} opacity={.85} />
+                        <text x={x+BW} y={H+13} fontSize={8} fill={u.text2} textAnchor="middle" fontFamily={L.font}>{task.label?.split(' ')[0]}</text>
+                        {tt?.sig&&<text x={x+BW} y={H-Math.max(dh,lh)-5} fontSize={10} fill={SIG} textAnchor="middle" fontWeight="700">*</text>}
+                      </g>
+                    );
+                  })}
+                  <rect x={36} y={H+14} width={BW} height={4} rx={1} fill={DK} />
+                  <text x={36+BW+4} y={H+18} fontSize={9} fill={DK} fontFamily={L.font}>Dark</text>
+                  <rect x={90} y={H+14} width={BW} height={4} rx={1} fill={LT} />
+                  <text x={90+BW+4} y={H+18} fontSize={9} fill={LT} fontFamily={L.font}>Light</text>
+                </svg>
+              );
+            })()}
+          </div>
+          {/* Task table (collapsible) */}
+          <button onClick={()=>toggle('tasks')} style={{ fontSize:12, color:u.text3, background:'none', border:'none', cursor:'pointer', fontFamily:L.font, padding:0, marginBottom:expanded.tasks?14:0 }}>
+            {expanded.tasks?'▾ Hide':'▸ Show'} per-task table
+          </button>
+          {expanded.tasks && (
+            <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:500 }}>
+                <thead><tr>{['Task','Dark M','Dark SD','Light M','Light SD','Δ','n','t','p'].map(h=><th key={h} style={TH}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {taskBreak.filter(t=>t.dark?.n>0||t.light?.n>0).map((task,i)=>{
+                    const diff=task.dark?.mean!=null&&task.light?.mean!=null?task.dark.mean-task.light.mean:null;
+                    const tt=TT?.find(t=>t.tid===task.tid)?.test;
+                    return (
+                      <tr key={task.tid} style={{ background:tt?.sig?`${SIG}08`:i%2?u.fill+'66':'transparent' }}>
+                        <td style={{ ...TD(u.text), fontWeight:500 }}>{task.label}</td>
+                        <td style={TD(DK,true)}>{fv(task.dark?.mean)}</td>
+                        <td style={TD(u.text3,true)}>{fv(task.dark?.sd)}</td>
+                        <td style={TD(LT,true)}>{fv(task.light?.mean)}</td>
+                        <td style={TD(u.text3,true)}>{fv(task.light?.sd)}</td>
+                        <td style={TD(diff!=null?(diff>0?SIG:u.red):u.text3,true)}>{diff!=null?(diff>0?'+':'')+fv(diff):'—'}</td>
+                        <td style={TD(u.text3,true)}>{Math.max(task.dark?.n||0,task.light?.n||0)}</td>
+                        <td style={TD(u.teal,true)}>{tt?.t||'—'}</td>
+                        <td style={TD(tt?.sig?SIG:tt?.p<.05?MAR:u.text3,true)}>{tt?.p?.toFixed(3)||'—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </SectionWrap>}
+
+      {/* ══ 07 SUBJECTIVE MEASURES ════════════════════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="07" title="Subjective Measures"
+          sub="NASA-TLX cognitive workload subscales (0–20) and post-phase comfort ratings (1–7) by theme condition." />
+        <div style={{ padding:pad }}>
+          <div style={{ display:'grid', gridTemplateColumns:isDesktop?'1fr 1fr':'1fr', gap:32 }}>
             {/* NASA bars */}
-            <div style={{ minWidth:280 }}>
-              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1, textTransform:"uppercase", marginBottom:14 }}>NASA-TLX Subscales (0–20)</div>
-              {[{k:"nasaMD",l:"Mental Demand"},{k:"nasaTD",l:"Temporal"},{k:"nasaEF",l:"Effort"},{k:"nasFR",l:"Frustration"},{k:"nasa",l:"Total Score"}].map(({k,l})=>{
+            <div>
+              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1.2, textTransform:'uppercase', marginBottom:16 }}>NASA-TLX Subscales (0–20)</div>
+              {[{k:'nasaMD',l:'Mental Demand'},{k:'nasaEF',l:'Effort'},{k:'nasFR',l:'Frustration'},{k:'nasa',l:'Total Score'}].map(({k,l})=>{
                 const d=desc[k]; if (!d?.dark?.n&&!d?.light?.n) return null;
-                const dm=d?.dark?.mean||0, lm=d?.light?.mean||0;
-                const mx=20;
+                const dm=d?.dark?.mean||0, lm=d?.light?.mean||0, mx=20;
+                const t=tests[k];
                 return (
-                  <div key={k} style={{ marginBottom:10 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                      <span style={{ fontSize:11, color:u.text2 }}>{l}</span>
-                      <div style={{ display:"flex", gap:8 }}>
-                        <span style={{ fontSize:11, fontWeight:600, color:dk, fontFamily:L.mono }}>{fv(dm)}</span>
-                        <span style={{ fontSize:11, fontWeight:600, color:lt, fontFamily:L.mono }}>{fv(lm)}</span>
+                  <div key={k} style={{ marginBottom:14 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:5 }}>
+                      <span style={{ fontSize:12, color:u.text2, fontWeight:t?.sig?700:400 }}>{l}</span>
+                      <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:DK, fontFamily:L.mono, fontWeight:600 }}>{fv(dm)}</span>
+                        <span style={{ fontSize:10, color:u.text3 }}>vs</span>
+                        <span style={{ fontSize:11, color:LT, fontFamily:L.mono, fontWeight:600 }}>{fv(lm)}</span>
+                        {t?.sig&&<Chip label="★" color={SIG} />}
+                        {t?.marginal&&!t?.sig&&<Chip label="~" color={MAR} />}
                       </div>
                     </div>
-                    <div style={{ height:5, background:u.border, borderRadius:3, overflow:"hidden", marginBottom:3 }}>
-                      <div style={{ height:"100%", width:`${(dm/mx)*100}%`, background:dk, opacity:.9, borderRadius:3 }} />
+                    <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
+                      <div style={{ width:8, height:8, borderRadius:2, background:DK, flexShrink:0 }} />
+                      <div style={{ flex:1, height:5, background:u.border, borderRadius:3, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${(dm/mx)*100}%`, background:DK, opacity:.85, borderRadius:3 }} />
+                      </div>
                     </div>
-                    <div style={{ height:5, background:u.border, borderRadius:3, overflow:"hidden" }}>
-                      <div style={{ height:"100%", width:`${(lm/mx)*100}%`, background:lt, opacity:.9, borderRadius:3 }} />
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ width:8, height:8, borderRadius:2, background:LT, flexShrink:0 }} />
+                      <div style={{ flex:1, height:5, background:u.border, borderRadius:3, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${(lm/mx)*100}%`, background:LT, opacity:.85, borderRadius:3 }} />
+                      </div>
                     </div>
                   </div>
                 );
@@ -3839,147 +3911,204 @@ function AnalysisTab({ u, users }) {
             </div>
             {/* Comfort ratings */}
             <div>
-              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1, textTransform:"uppercase", marginBottom:14 }}>Comfort Ratings (1–7)</div>
-              {[{k:"vc",l:"Visual Comfort",hi:true},{k:"es",l:"Eye Strain",hi:false},{k:"fa",l:"Fatigue",hi:false},{k:"sa",l:"Satisfaction",hi:true}].map(({k,l,hi})=>{
+              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1.2, textTransform:'uppercase', marginBottom:16 }}>Comfort Ratings (1–7)</div>
+              {[{k:'vc',l:'Visual Comfort',hi:true},{k:'es',l:'Eye Strain',hi:false},{k:'fa',l:'Fatigue',hi:false},{k:'sa',l:'Satisfaction',hi:true}].map(({k,l,hi})=>{
                 const d=desc[k]; if (!d?.dark?.n&&!d?.light?.n) return null;
                 const dm=d?.dark?.mean, lm=d?.light?.mean;
-                const dkW = dm!=null?`${(dm/7)*100}%`:"0%";
-                const ltW = lm!=null?`${(lm/7)*100}%`:"0%";
-                const better = dm!=null&&lm!=null?(hi?dm>lm?dk:lt:dm<lm?dk:lt):null;
+                const t=tests[k];
+                const betterColor = dm!=null&&lm!=null?(hi?(dm>lm?DK:LT):(dm<lm?DK:LT)):null;
                 return (
-                  <div key={k} style={{ marginBottom:12 }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
-                      <span style={{ fontSize:11, color:u.text2 }}>{l}</span>
-                      <div style={{ display:"flex", gap:10, alignItems:"center" }}>
-                        <span style={{ fontSize:11, fontWeight:600, color:dk, fontFamily:L.mono }}>{fv(dm)}</span>
+                  <div key={k} style={{ marginBottom:14 }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:7 }}>
+                      <span style={{ fontSize:12, color:u.text2, fontWeight:t?.sig?700:400 }}>{l}</span>
+                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:DK, fontFamily:L.mono, fontWeight:600 }}>{fv(dm)}</span>
                         <span style={{ fontSize:10, color:u.text3 }}>vs</span>
-                        <span style={{ fontSize:11, fontWeight:600, color:lt, fontFamily:L.mono }}>{fv(lm)}</span>
-                        {better && <span style={{ fontSize:10, padding:"1px 6px", borderRadius:99, background:`${better}15`, color:better, border:`1px solid ${better}30` }}>{better===dk?"🌙":"☀️"}</span>}
+                        <span style={{ fontSize:11, color:LT, fontFamily:L.mono, fontWeight:600 }}>{fv(lm)}</span>
+                        {betterColor&&<div style={{ width:8, height:8, borderRadius:'50%', background:betterColor }} />}
+                        {t?.sig&&<Chip label="★" color={SIG} />}
                       </div>
                     </div>
-                    <div style={{ display:"flex", gap:4 }}>
+                    <div style={{ display:'flex', gap:3 }}>
                       {[1,2,3,4,5,6,7].map(n=>{
                         const dkA=dm!=null&&Math.round(dm)===n, ltA=lm!=null&&Math.round(lm)===n;
-                        return <div key={n} style={{ flex:1, height:24, borderRadius:4, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:dkA||ltA?700:400, background:dkA?dk:ltA?lt:u.fill, border:`1px solid ${dkA?dk:ltA?lt:u.border}`, color:dkA||ltA?"#fff":u.text3 }}>{n}</div>;
+                        const both=dkA&&ltA;
+                        return (
+                          <div key={n} style={{ flex:1, height:28, borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:dkA||ltA?700:400, background:both?'#7c3aed':dkA?DK:ltA?LT:u.fill, border:`1px solid ${dkA||ltA?'transparent':u.border}`, color:dkA||ltA?'#fff':u.text3, transition:'all .15s' }}>
+                            {n}
+                          </div>
+                        );
                       })}
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'space-between', fontSize:10, color:u.text3, marginTop:4 }}>
+                      <span>{hi?'Low':'Absent'}</span><span>{hi?'High':'Severe'}</span>
                     </div>
                   </div>
                 );
               })}
             </div>
           </div>
-        </>)}
-      </>)}
-
-      {/* ── 08 ADVANCED ANALYSIS ── */}
-      {wrap(<>
-        {padded(<SecHdr num="08" title="Advanced Analysis" sub="Non-parametric validation, order effects, practice effects, and internal consistency." />)}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:0, borderTop:`1px solid ${u.border}` }}>
-          {/* Wilcoxon */}
-          <div style={{ padding:"20px 24px", borderRight:`1px solid ${u.border}` }}>
-            <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:12 }}>Wilcoxon Signed-Rank (Non-parametric)</div>
-            {Object.entries(resWilcoxon||{}).slice(0,5).map(([k,w])=>{
-              const row=TEST_ROWS.find(r=>r.k===k); const t=tests[k];
-              if (!row) return null;
-              const matches=w&&t?w.sig===t.sig:null;
-              return (
-                <div key={k} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"6px 0", borderBottom:`1px solid ${u.border}` }}>
-                  <span style={{ fontSize:11, color:u.text2 }}>{row.l}</span>
-                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <span style={{ fontSize:11, color:w?.sig?SIG:u.text3, fontFamily:L.mono }}>{w?.p?.toFixed(4)||"—"}</span>
-                    <span style={{ fontSize:10, padding:"1px 6px", borderRadius:99, background:matches==null?u.fill:matches?`${SIG}12`:`${MAR}12`, color:matches==null?u.text3:matches?SIG:MAR }}>{matches==null?"—":matches?"Consistent":"⚠ Discrepant"}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {/* Order + Practice effect */}
-          <div style={{ padding:"20px 24px" }}>
-            <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:12 }}>Order & Practice Effects</div>
-            {/* Order effect */}
-            <div style={{ marginBottom:14 }}>
-              <div style={{ fontSize:11, color:u.text3, marginBottom:8, fontWeight:600, textTransform:"uppercase", letterSpacing:.6 }}>Order Effect (DL vs LD)</div>
-              {Object.entries(resOrderEffect||{}).map(([k,oe])=>{
-                const row=TEST_ROWS.find(r=>r.k===k); if (!row||!oe) return null;
-                return (
-                  <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"5px 0", borderBottom:`1px solid ${u.border}` }}>
-                    <span style={{ fontSize:11, color:u.text2 }}>{row.l}</span>
-                    <span style={{ fontSize:11, color:oe.sig?u.red:SIG, fontFamily:L.mono, fontWeight:oe.sig?700:400 }}>{oe.sig?"⚠ p=":"✓ p="}{oe.p?.toFixed(3)||"—"}</span>
-                  </div>
-                );
-              })}
-            </div>
-            {/* Practice effect */}
-            {pe && <div style={{ padding:"12px 14px", borderRadius:8, background:pe.sig?`${MAR}10`:`${SIG}08`, border:`1px solid ${pe.sig?MAR:SIG}22` }}>
-              <div style={{ fontSize:11, fontWeight:600, color:pe.sig?MAR:SIG, marginBottom:4 }}>{pe.sig?"⚠ Practice Effect Detected":"✓ No Practice Effect"}</div>
-              <div style={{ fontSize:11, color:u.text2 }}>t({pe.df}) = {pe.t}, p = {pe.p?.toFixed(3)}, d = {pe.cohensD}</div>
-            </div>}
+          <div style={{ marginTop:16, paddingTop:14, borderTop:`1px solid ${u.border}` }}>
+            <DotLegend />
           </div>
         </div>
-        {/* Correlation matrix */}
-        {resCorrMatrix?.length>0 && <div style={{ padding:"20px 24px", borderTop:`1px solid ${u.border}` }}>
-          <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:12 }}>Correlation Matrix (Pearson r)</div>
-          <div style={{ overflowX:"auto" }}>
-            <table style={{ borderCollapse:"collapse" }}>
-              <thead><tr><th style={{ ...TH, background:"transparent" }}></th>{(resCorrLabels||[]).map(l=><th key={l} style={{ ...TH, fontSize:10 }}>{l}</th>)}</tr></thead>
-              <tbody>{(resCorrMatrix||[]).map((row,i)=>(
-                <tr key={i}>
-                  <td style={{ ...TD(u.text), fontWeight:500, fontSize:11 }}>{resCorrLabels?.[i]}</td>
-                  {row.map((r,j)=>{
-                    if (i===j) return <td key={j} style={{ ...TD(u.text3,true), background:u.fill, textAlign:"center" }}>—</td>;
-                    const col=r==null?u.text3:Math.abs(r)>.5?SIG:Math.abs(r)>.3?u.teal:u.text3;
-                    const bg=r==null?"":r>.5?`${SIG}12`:r<-.5?`${u.red}12`:r>.3?`${u.teal}08`:r<-.3?`${u.teal}08`:"";
-                    return <td key={j} style={{ ...TD(col,true), background:bg, textAlign:"center" }}>{r!=null?r.toFixed(2):"—"}</td>;
-                  })}
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        </div>}
-        {/* Reliability */}
-        {Object.keys(reliability||{}).length>0 && <div style={{ padding:"20px 24px", borderTop:`1px solid ${u.border}`, display:"flex", gap:16, flexWrap:"wrap" }}>
-          {Object.values(reliability).map(rel=>{
-            const col=rel.alpha==null?u.text3:rel.alpha>=.9?SIG:rel.alpha>=.8?u.teal:rel.alpha>=.7?MAR:u.red;
-            const lab=rel.alpha==null?"N/A":rel.alpha>=.9?"Excellent":rel.alpha>=.8?"Good":rel.alpha>=.7?"Acceptable":"Poor";
-            return (
-              <div key={rel.label} style={{ flex:1, minWidth:200, padding:"16px 20px", borderRadius:8, background:u.fill, border:`1px solid ${u.border}` }}>
-                <div style={{ fontSize:11, color:u.text3, marginBottom:6 }}>{rel.label} · k={rel.items}, n={rel.n}</div>
-                <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                  <div style={{ fontSize:28, fontWeight:800, color:col, fontFamily:L.mono }}>{rel.alpha!=null?rel.alpha:"—"}</div>
-                  <span style={{ padding:"3px 10px", borderRadius:99, fontSize:11, fontWeight:600, background:`${col}15`, color:col, border:`1px solid ${col}25` }}>{lab}</span>
-                </div>
-                <div style={{ height:4, background:u.border, borderRadius:2, marginTop:8, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:`${(rel.alpha||0)*100}%`, background:col, borderRadius:2 }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>}
-      </>)}
+      </SectionWrap>
 
-      {/* ── 09 APA RESULTS TEXT ── */}
-      {wrap(<>
-        {padded(<>
-          <SecHdr num="09" title="APA-Formatted Results" sub="Ready to copy into your thesis or paper. Select all text and paste directly." />
-          <div style={{ padding:"20px 24px", background:u.fill, borderRadius:8, border:`1px solid ${u.border}`, fontSize:13, color:u.text2, lineHeight:2.1, fontFamily:"Georgia, 'Times New Roman', serif", userSelect:"all", cursor:"text" }}>
-            <p style={{ margin:"0 0 14px" }}><strong>Participants.</strong> A total of {N} participant{N!==1?"s":""} completed a within-subjects experiment comparing dark and light mode interfaces across {CFG.tasks.length} cognitive tasks. Counterbalancing was implemented using an alternating DL/LD assignment protocol (DL group: <em>n</em> = {cb?.dl ?? "—"}, LD group: <em>n</em> = {cb?.ld ?? "—"}).</p>
-            <p style={{ margin:"0 0 14px" }}><strong>Statistical Analysis.</strong> Paired-samples <em>t</em>-tests were conducted for {N_TESTS} dependent variables. A Bonferroni correction was applied to control the familywise error rate (adjusted α = {ALPHA}). Effect sizes are reported as Cohen's <em>d</em>, and 95% confidence intervals are provided for all mean differences. Where the Jarque-Bera test indicated non-normality, Wilcoxon signed-rank tests were conducted as non-parametric alternatives.</p>
-            {tests.acc && <p style={{ margin:"0 0 14px" }}><strong>Task Accuracy.</strong> {desc.acc?.dark?.mean!=null?`Mean accuracy in dark mode was <em>M</em> = ${fv(desc.acc.dark.mean)}, <em>SD</em> = ${fv(desc.acc.dark.sd)}, and in light mode <em>M</em> = ${fv(desc.acc.light.mean)}, <em>SD</em> = ${fv(desc.acc.light.sd)}. `:""}A paired-samples <em>t</em>-test {tests.acc.sig?"revealed a statistically significant difference":"did not reveal a statistically significant difference"}, <em>t</em>({tests.acc.df}) = {tests.acc.t}, <em>p</em> = {tests.acc.p?.toFixed(4)} (Bonferroni-adjusted <em>p</em> = {Math.min(1,(tests.acc.p||0)*N_TESTS).toFixed(4)}), <em>d</em> = {tests.acc.cohensD}{tests.acc.ci95?`, 95% CI [${fv(tests.acc.ci95.lower)}, ${fv(tests.acc.ci95.upper)}]`:""}.</p>}
-            {tests.rt && <p style={{ margin:"0 0 14px" }}><strong>Response Time.</strong> Dark mode <em>M</em> = {fv(desc.rt?.dark?.mean)} ms (<em>SD</em> = {fv(desc.rt?.dark?.sd)}), light mode <em>M</em> = {fv(desc.rt?.light?.mean)} ms (<em>SD</em> = {fv(desc.rt?.light?.sd)}). <em>t</em>({tests.rt.df}) = {tests.rt.t}, <em>p</em> = {tests.rt.p?.toFixed(4)}, <em>d</em> = {tests.rt.cohensD}.</p>}
-            {tests.nasa && <p style={{ margin:"0 0 14px" }}><strong>Cognitive Workload (NASA-TLX).</strong> Dark mode <em>M</em> = {fv(desc.nasa?.dark?.mean)} (<em>SD</em> = {fv(desc.nasa?.dark?.sd)}), light mode <em>M</em> = {fv(desc.nasa?.light?.mean)} (<em>SD</em> = {fv(desc.nasa?.light?.sd)}). <em>t</em>({tests.nasa.df}) = {tests.nasa.t}, <em>p</em> = {tests.nasa.p?.toFixed(4)}, <em>d</em> = {tests.nasa.cohensD}.</p>}
-            {sigRows.length>0
-              ? <p style={{ margin:"0 0 14px" }}><strong>Significant Findings.</strong> The following variables reached Bonferroni-corrected significance: {sigRows.map((r,i)=>`${r.l} [<em>t</em>(${tests[r.k].df}) = ${tests[r.k].t}, <em>p</em> = ${tests[r.k].p?.toFixed(4)}, <em>d</em> = ${tests[r.k].cohensD}]`).join("; ")}.</p>
-              : <p style={{ margin:"0 0 14px" }}><strong>Null Findings.</strong> No dependent variable reached Bonferroni-corrected significance (α = {ALPHA}).{margRows.length>0?` Marginal uncorrected effects (p < .05) were observed for: ${margRows.map(r=>r.l).join(", ")}.`:""} Given the preliminary sample size, effect sizes and confidence intervals provide the most meaningful basis for interpretation.</p>}
-            {pe && <p style={{ margin:0 }}><strong>Practice Effects.</strong> {pe.sig?`A significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, d = ${pe.cohensD}], indicating performance changed across phases independent of theme. This should be considered a limitation when interpreting condition differences.`:`No significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}], indicating performance was stable across phases.`}</p>}
+      {/* ══ 08 ADVANCED ANALYSIS (collapsible) ════════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="08" title="Advanced Analysis"
+          sub="Non-parametric validation, order effects, practice effects, statistical power, and internal consistency."
+          action={<ExpandToggle id="advanced" label="details" />} />
+        {expanded.advanced ? (
+          <div style={{ padding:pad }}>
+            <div style={{ display:'grid', gridTemplateColumns:isTablet?'1fr 1fr':'1fr', gap:24, marginBottom:24 }}>
+              {/* Wilcoxon */}
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:12 }}>Wilcoxon Signed-Rank</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:12 }}>Non-parametric alternative. Validates t-test findings where normality is violated.</div>
+                {Object.entries(resWilcoxon||{}).slice(0,6).map(([k,w])=>{
+                  const row=TEST_ROWS.find(r=>r.k===k), t=tests[k]; if (!row) return null;
+                  const matches=w&&t?w.sig===t.sig:null;
+                  return (
+                    <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderBottom:`1px solid ${u.border}` }}>
+                      <span style={{ fontSize:11, color:u.text2 }}>{row.l}</span>
+                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:w?.sig?SIG:NS, fontFamily:L.mono }}>{w?.p?.toFixed(4)||'—'}</span>
+                        <Chip label={matches==null?'—':matches?'Consistent':'⚠ Discrepant'} color={matches==null?NS:matches?SIG:MAR} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Power + Order + Practice */}
+              <div>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:12 }}>Statistical Power (1−β)</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:12 }}>Power ≥ 80% is conventionally adequate. Low power: null results may be Type II errors.</div>
+                {TEST_ROWS.slice(0,5).map(({ k,l }) => {
+                  const t=tests[k], pw=resPower?.[k]; if (!t) return null;
+                  const col=pw>=.8?SIG:pw>=.5?MAR:NS;
+                  return (
+                    <div key={k} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 0', borderBottom:`1px solid ${u.border}` }}>
+                      <span style={{ fontSize:11, color:u.text2 }}>{l}</span>
+                      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                        <span style={{ fontSize:11, color:col, fontFamily:L.mono, fontWeight:600 }}>{pw!=null?(pw*100).toFixed(0)+'%':'—'}</span>
+                        <Chip label={pw==null?'—':pw>=.8?'Adequate':pw>=.5?'Moderate':'Low'} color={col} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Order effect + Practice effect */}
+            <div style={{ display:'grid', gridTemplateColumns:isTablet?'1fr 1fr':'1fr', gap:16, marginBottom:24 }}>
+              <div style={{ padding:'16px 20px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:8 }}>Order Effect (DL vs LD)</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:10 }}>A significant result indicates theme order influenced outcomes — report as limitation.</div>
+                {Object.entries(resOrderEffect||{}).map(([k,oe])=>{
+                  const row=TEST_ROWS.find(r=>r.k===k); if (!row||!oe) return null;
+                  return (
+                    <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:`1px solid ${u.border}` }}>
+                      <span style={{ fontSize:11, color:u.text2 }}>{row.l}</span>
+                      <span style={{ fontSize:11, color:oe.sig?u.red:SIG, fontFamily:L.mono, fontWeight:oe.sig?700:400 }}>{oe.sig?'⚠ p=':'✓ p='}{oe.p?.toFixed(3)||'—'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {pe && <div style={{ padding:'16px 20px', borderRadius:10, background:pe.sig?`${MAR}08`:`${SIG}06`, border:`1px solid ${pe.sig?MAR:SIG}25` }}>
+                <div style={{ fontSize:12, fontWeight:600, color:pe.sig?MAR:SIG, marginBottom:6 }}>{pe.sig?'⚠ Practice Effect Detected':'✓ No Practice Effect'}</div>
+                <div style={{ fontSize:11, color:u.text2, lineHeight:1.7 }}>t({pe.df}) = {pe.t}, p = {pe.p?.toFixed(3)}, d = {pe.cohensD}</div>
+                <div style={{ fontSize:11, color:u.text3, marginTop:6 }}>{pe.sig?'Performance changed between phases regardless of theme.':'Performance was stable across phases.'}</div>
+              </div>}
+            </div>
+
+            {/* Correlation matrix */}
+            {CM?.length>0 && <>
+              <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:10 }}>Correlation Matrix (Pearson r)</div>
+              <div style={{ overflowX:'auto', marginBottom:24 }}>
+                <table style={{ borderCollapse:'collapse' }}>
+                  <thead><tr><th style={{ ...TH, background:'transparent', minWidth:90 }}></th>{(CL||[]).map(l=><th key={l} style={{ ...TH, fontSize:10, minWidth:80 }}>{l}</th>)}</tr></thead>
+                  <tbody>{(CM||[]).map((row,i)=>(
+                    <tr key={i}>
+                      <td style={{ ...TD(u.text), fontWeight:500, fontSize:11 }}>{CL?.[i]}</td>
+                      {row.map((r,j)=>{
+                        if (i===j) return <td key={j} style={{ ...TD(u.text3,true), background:u.fill, textAlign:'center', fontSize:11 }}>—</td>;
+                        const col=r==null?NS:Math.abs(r)>.5?SIG:Math.abs(r)>.3?u.teal:NS;
+                        const bg=r==null?'':r>.5?`${SIG}12`:r<-.5?`${u.red}12`:r>.3||r<-.3?`${u.teal}08`:'';
+                        return <td key={j} style={{ ...TD(col,true), background:bg, textAlign:'center', fontSize:11 }}>{r!=null?r.toFixed(2):'—'}</td>;
+                      })}
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </>}
+
+            {/* Reliability */}
+            {Object.keys(reliability||{}).length>0 && <>
+              <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:12 }}>Reliability — Cronbach's α</div>
+              <div style={{ display:'grid', gridTemplateColumns:isTablet?'1fr 1fr':'1fr', gap:12 }}>
+                {Object.values(reliability).map(rel=>{
+                  const col=rel.alpha==null?NS:rel.alpha>=.9?SIG:rel.alpha>=.8?u.teal:rel.alpha>=.7?MAR:u.red;
+                  const lab=rel.alpha==null?'N/A':rel.alpha>=.9?'Excellent':rel.alpha>=.8?'Good':rel.alpha>=.7?'Acceptable':'Poor';
+                  return (
+                    <div key={rel.label} style={{ padding:'16px 18px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+                      <div style={{ fontSize:11, color:u.text3, marginBottom:6 }}>{rel.label} · k={rel.items}, n={rel.n}</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                        <span style={{ fontSize:26, fontWeight:800, color:col, fontFamily:L.mono }}>{rel.alpha!=null?rel.alpha:'—'}</span>
+                        <Chip label={lab} color={col} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>}
           </div>
-          <div style={{ fontSize:11, color:u.text3, marginTop:8 }}>💡 Select all text inside the box to copy. Review italics and update participant demographics before submission.</div>
-        </>)}
-      </>)}
+        ) : (
+          <div style={{ padding:pad, paddingTop:16 }}>
+            <div style={{ fontSize:13, color:u.text3 }}>Power analysis · Wilcoxon tests · Order effect check · Practice effect · Correlation matrix · Reliability</div>
+          </div>
+        )}
+      </SectionWrap>
+
+      {/* ══ 09 APA RESULTS (collapsible) ════════════════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="09" title="APA-Formatted Results"
+          sub="Ready to copy into your thesis or paper. Expand, select all, and paste."
+          action={<ExpandToggle id="apa" label="text" />} />
+        {expanded.apa ? (
+          <div style={{ padding:pad }}>
+            <div style={{ padding:'24px 28px', background:u.fill, borderRadius:10, border:`1px solid ${u.border}`, userSelect:'all', cursor:'text' }}>
+              {[
+                { head:'Participants', body:`A total of ${N} participant${N!==1?'s':''} completed a within-subjects experiment comparing dark mode and light mode interfaces across ${CFG.tasks.length} cognitive tasks. Participants were counterbalanced using alternating DL/LD assignment (DL: n = ${cb?.dl??'—'}, LD: n = ${cb?.ld??'—'}).` },
+                { head:'Statistical Analysis', body:`Paired-samples t-tests were conducted for ${NT} dependent variables. A Bonferroni correction controlled the familywise error rate (adjusted α = ${ALPHA}). Effect sizes are reported as Cohen's d with 95% confidence intervals. Where Jarque-Bera tests indicated non-normality, Wilcoxon signed-rank tests were also computed.` },
+                tests.acc && { head:'Accuracy', body:`Mean accuracy in dark mode (M = ${fv(desc.acc?.dark?.mean)}, SD = ${fv(desc.acc?.dark?.sd)}) was compared with light mode (M = ${fv(desc.acc?.light?.mean)}, SD = ${fv(desc.acc?.light?.sd)}). A paired-samples t-test ${tests.acc.sig?'revealed a statistically significant difference':'did not reveal a statistically significant difference'}, t(${tests.acc.df}) = ${tests.acc.t}, p = ${tests.acc.p?.toFixed(4)} (Bonferroni-adjusted p = ${Math.min(1,(tests.acc.p||0)*NT).toFixed(4)}), d = ${tests.acc.cohensD}${tests.acc.ci95?`, 95% CI [${fv(tests.acc.ci95.lower)}, ${fv(tests.acc.ci95.upper)}]`:''}` },
+                tests.rt && { head:'Response Time', body:`Mean response time: dark mode M = ${fv(desc.rt?.dark?.mean)} ms (SD = ${fv(desc.rt?.dark?.sd)}), light mode M = ${fv(desc.rt?.light?.mean)} ms (SD = ${fv(desc.rt?.light?.sd)}). t(${tests.rt.df}) = ${tests.rt.t}, p = ${tests.rt.p?.toFixed(4)}, d = ${tests.rt.cohensD}.` },
+                tests.nasa && { head:'Cognitive Workload', body:`NASA-TLX total: dark mode M = ${fv(desc.nasa?.dark?.mean)} (SD = ${fv(desc.nasa?.dark?.sd)}), light mode M = ${fv(desc.nasa?.light?.mean)} (SD = ${fv(desc.nasa?.light?.sd)}). t(${tests.nasa.df}) = ${tests.nasa.t}, p = ${tests.nasa.p?.toFixed(4)}, d = ${tests.nasa.cohensD}.` },
+                sigRows.length>0
+                  ? { head:'Significant Findings', body:`The following variables reached Bonferroni-corrected significance (α = ${ALPHA}): ${sigRows.map(r=>`${r.l} [t(${tests[r.k].df}) = ${tests[r.k].t}, p = ${tests[r.k].p?.toFixed(4)}, d = ${tests[r.k].cohensD}]`).join('; ')}.` }
+                  : { head:'Null Findings', body:`No dependent variable reached Bonferroni-corrected significance (α = ${ALPHA}).${margRows.length>0?` Marginal effects (uncorrected p < .05) were observed for: ${margRows.map(r=>r.l).join(', ')}.`:''} Given the preliminary sample size, effect sizes and confidence intervals are the primary basis for interpretation.` },
+                pe && { head:'Practice Effects', body:pe.sig?`A significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, d = ${pe.cohensD}], indicating performance changed across phases independently of theme condition. This should be noted as a limitation.`:`No significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}], indicating performance was stable across phases.` },
+              ].filter(Boolean).map(({ head, body }, i) => (
+                <div key={i} style={{ marginBottom:20 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:u.text, marginBottom:6 }}>{head}.</div>
+                  <div style={{ fontSize:13, color:u.text2, lineHeight:1.9, fontFamily:"Georgia, 'Times New Roman', serif" }}>{body}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ fontSize:11, color:u.text3, marginTop:10 }}>Select all text above to copy. Review statistical notation and update participant details before submission.</div>
+          </div>
+        ) : (
+          <div style={{ padding:pad, paddingTop:16 }}>
+            <div style={{ fontSize:13, color:u.text3 }}>Auto-generated APA-formatted paragraph with all test statistics, ready to paste into your paper.</div>
+          </div>
+        )}
+      </SectionWrap>
 
     </div>
   );
 }
-function LimitationsTab({ u }) {
+
+
   const lims = [
     { title:"Sample Size",            sev:"High",     desc:"The current sample size is insufficient for reliable statistical inference. Paired t-tests require n ≥ 20 for adequate power (1−β ≥ 0.80) at medium effect sizes with Bonferroni correction. Results should be treated as preliminary." },
     { title:"Stimulus Difficulty",    sev:"High",     desc:"Both phases use randomly generated stimuli rather than pre-matched sets. Unequal difficulty across conditions could confound theme comparisons. A fixed counterbalanced stimulus set would strengthen internal validity." },
@@ -4015,10 +4144,43 @@ function LimitationsTab({ u }) {
       </div>
     </div>
   );
-}
-
-
-function ParticipantHeatmap({ u, users }) {
+function LimitationsTab({ u }) {
+  const MAR = "#f97316";
+  const sevColor = s => s==="High"?u.red:s==="Moderate"?MAR:u.teal;
+  const lims = [
+    { title:"Sample Size",           sev:"High",     desc:"Paired t-tests require n ≥ 20 for adequate power (1−β ≥ 0.80) at medium effects with Bonferroni correction. Current results are preliminary. Effect sizes (Cohen's d) are more reliable indicators than p-values." },
+    { title:"Stimulus Difficulty",   sev:"High",     desc:"Both phases use randomly generated stimuli rather than pre-matched sets. Unequal task difficulty across conditions may confound theme comparisons. A counterbalanced fixed stimulus set would strengthen internal validity." },
+    { title:"Practice Effect",       sev:"Moderate", desc:"Participants in Phase 2 benefit from task familiarity regardless of theme. Counterbalancing mitigates but does not eliminate this. Practice effect analysis is available in the Analysis tab." },
+    { title:"Single-Session Design", sev:"Moderate", desc:"Both conditions were tested in one session. Long-term habituation, sustained-use fatigue, and preference stability remain unexamined. A longitudinal design would address these concerns." },
+    { title:"Theme Scope",           sev:"Moderate", desc:"Only default system light and dark themes were tested. Custom schemes, high-contrast modes, blue-light filters, and individual display calibration were excluded, limiting generalisability." },
+    { title:"Multiple Comparisons",  sev:"Low",      desc:"11 simultaneous t-tests are conducted with Bonferroni correction (α = 0.0045). This conservative correction may increase Type II error. Effect sizes and confidence intervals supplement p-values." },
+    { title:"Normality Assumption",  sev:"Low",      desc:"Paired t-tests assume normally distributed difference scores. The Jarque-Bera test flags violations; non-parametric Wilcoxon alternatives are computed and reported in the Analysis tab." },
+    { title:"Self-Report Validity",  sev:"Low",      desc:"NASA-TLX and comfort ratings rely on self-report, which is subject to response bias and demand characteristics. Objective physiological measures would supplement these findings." },
+  ];
+  return (
+    <div className="au" style={{ fontFamily:L.font }}>
+      <SectionHdr u={u} eyebrow="Methodology" title="Limitations & Validity Threats"
+        sub="Known threats to internal and external validity. Address these in your Discussion section." />
+      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+        {lims.map(({ title, sev, desc }) => {
+          const c = sevColor(sev);
+          return (
+            <Card key={title} u={u} style={{ padding:0, overflow:"hidden" }}>
+              <div style={{ height:3, background:c }} />
+              <div style={{ padding:"16px 20px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:u.text }}>{title}</div>
+                  <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:`${c}15`, color:c, border:`1px solid ${c}25`, fontWeight:600 }}>{sev}</span>
+                </div>
+                <div style={{ fontSize:13, color:u.text2, lineHeight:1.7 }}>{desc}</div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}({ u, users }) {
   const complete = users.filter(usr => (usr.experiments || []).length >= 2);
   if (complete.length < 2) return null;
   return (
