@@ -4775,7 +4775,7 @@ function SettingsTab({ u }) {
 // ─── ADMIN DASHBOARD ─────────────────────────────────────────────────────────────
 function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
   const [tab, setTab] = useState("overview");
-  const [users, setUsers] = useState(() => db.all().filter(x => x.role !== "admin"));
+  const [users, setUsers] = useState(() => db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
   const [sel, setSel] = useState(null);
   const [csvModal, setCsvModal] = useState(false);
   const [csvContent, setCsvContent] = useState("");
@@ -4787,19 +4787,19 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
     if (!supa) return;
     setSyncing(true);
     db.syncFromCloud().then(n => {
-      if (n > 0) setUsers(db.all().filter(x => x.role !== "admin"));
+      if (n > 0) setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
       setSyncing(false);
     });
   }, []);
 
-  const refresh = () => setUsers(db.all().filter(x => x.role !== "admin"));
+  const refresh = () => setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
   const [delConfirm, setDelConfirm] = useState(null);
 
   const deleteParticipant = async (pid) => {
     // Remove from localStorage
     const all = db.all().filter(u => u.id !== pid);
     try { localStorage.setItem("hci_v5_users", JSON.stringify(all)); } catch {}
-    setUsers(all.filter(u => u.role !== "admin"));
+    setUsers(all.filter(u => u.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
     setDelConfirm(null);
     if (sel?.id === pid) setSel(null);
     // Remove from Supabase
