@@ -4108,42 +4108,7 @@ function AnalysisTab({ u, users }) {
   );
 }
 
-
-  const lims = [
-    { title:"Sample Size",            sev:"High",     desc:"The current sample size is insufficient for reliable statistical inference. Paired t-tests require n ≥ 20 for adequate power (1−β ≥ 0.80) at medium effect sizes with Bonferroni correction. Results should be treated as preliminary." },
-    { title:"Stimulus Difficulty",    sev:"High",     desc:"Both phases use randomly generated stimuli rather than pre-matched sets. Unequal difficulty across conditions could confound theme comparisons. A fixed counterbalanced stimulus set would strengthen internal validity." },
-    { title:"Single-Session Design",  sev:"Moderate", desc:"Both conditions were tested in one session. Long-term habituation, sustained-use fatigue, and preference stability remain unexamined. A longitudinal design would address this." },
-    { title:"Practice Effect",        sev:"Moderate", desc:"Participants completing Phase 2 may benefit from task familiarity regardless of theme. Counterbalancing mitigates but does not eliminate this. Practice effect analysis is available in the Analysis tab." },
-    { title:"Theme Scope",            sev:"Moderate", desc:"Only default system light and dark themes were tested. Custom schemes, high-contrast modes, blue-light filters, and individual display calibration were excluded, limiting generalisability." },
-    { title:"Multiple Comparisons",   sev:"Low",      desc:"11 simultaneous t-tests are conducted. Bonferroni correction is applied (α = 0.0045), which is conservative and may increase Type II error. Effect sizes and CIs should supplement p-values." },
-    { title:"Self-Report Validity",   sev:"Low",      desc:"Comfort ratings rely on participant self-report, which is subject to response bias, demand characteristics, and anchoring effects. Validated psychophysical measures (e.g. eye-tracking) would supplement." },
-    { title:"Normality Assumption",   sev:"Low",      desc:"Paired t-tests assume normally distributed difference scores. The Jarque-Bera test flags violations; Wilcoxon signed-rank alternatives are computed and reported in the Analysis tab." },
-  ];
-  const MAR = "#f97316";
-  const sevColor = s => s==="High"?u.red:s==="Moderate"?MAR:u.teal;
-  return (
-    <div className="au" style={{ fontFamily:L.font }}>
-      <SectionHdr u={u} eyebrow="Methodology" title="Limitations & Validity"
-        sub="Known threats to internal and external validity of this study design." />
-      <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-        {lims.map(({ title, sev, desc }) => {
-          const c = sevColor(sev);
-          return (
-            <Card key={title} u={u} style={{ padding:0, overflow:"hidden" }}>
-              <div style={{ height:3, background:c }} />
-              <div style={{ padding:"16px 20px" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-                  <div style={{ fontSize:14, fontWeight:700, color:u.text }}>{title}</div>
-                  <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:`${c}15`, color:c, border:`1px solid ${c}25`, fontWeight:600 }}>{sev}</span>
-                </div>
-                <div style={{ fontSize:13, color:u.text2, lineHeight:1.7 }}>{desc}</div>
-              </div>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
+// ─── LIMITATIONS TAB ─────────────────────────────────────────────────────────────
 function LimitationsTab({ u }) {
   const MAR = "#f97316";
   const sevColor = s => s==="High"?u.red:s==="Moderate"?MAR:u.teal;
