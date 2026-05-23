@@ -4180,7 +4180,9 @@ function LimitationsTab({ u }) {
       </div>
     </div>
   );
-}({ u, users }) {
+}
+
+function ParticipantHeatmap({ u, users }) {
   const complete = users.filter(usr => (usr.experiments || []).length >= 2);
   if (complete.length < 2) return null;
   return (
