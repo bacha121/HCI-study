@@ -3509,9 +3509,10 @@ function AnalysisTab({ u, users }) {
   const ForestPlot = () => {
     const rows = TEST_ROWS.filter(r => tests[r.k]?.cohensD!=null);
     if (!rows.length) return null;
-    const all = rows.flatMap(r=>{const t=tests[r.k];return t?.ci95?[Math.abs(t.ci95.lower),Math.abs(t.ci95.upper),Math.abs(t.cohensD)]:[Math.abs(t.cohensD)]}).filter(v=>v!=null&&isFinite(v));
-    const maxE = all.length?Math.max(...all):1;
-    const SCALE = Math.min(Math.ceil(maxE*5)/5+0.3,3);
+    const allD = rows.map(r => tests[r.k]?.cohensD).filter(v=>v!=null&&isFinite(v));
+    const maxD = allD.length ? Math.max(...allD.map(Math.abs)) : 0.5;
+    // Cap scale at ±1.5 for readability; wide CIs get arrow indicators
+    const SCALE = Math.min(Math.max(Math.ceil(maxD*4)/4 + 0.25, 0.75), 1.5);
     const LBL=150,W=300,RH=32,PAD=20;
     const H = rows.length*RH+PAD+32;
     const sx = d => LBL + ((d+SCALE)/(SCALE*2))*W;
@@ -3826,11 +3827,11 @@ function AnalysisTab({ u, users }) {
                         <span style={{ fontSize:11, fontWeight:600, color:lt, fontFamily:L.mono }}>{fv(lm)}</span>
                       </div>
                     </div>
-                    <div style={{ height:6, background:u.border, borderRadius:3, overflow:"hidden", position:"relative", marginBottom:2 }}>
-                      <div style={{ position:"absolute", left:0, height:"100%", width:`${(dm/mx)*100}%`, background:dk, opacity:.8, borderRadius:3 }} />
+                    <div style={{ height:5, background:u.border, borderRadius:3, overflow:"hidden", marginBottom:3 }}>
+                      <div style={{ height:"100%", width:`${(dm/mx)*100}%`, background:dk, opacity:.9, borderRadius:3 }} />
                     </div>
-                    <div style={{ height:6, background:u.border, borderRadius:3, overflow:"hidden" }}>
-                      <div style={{ position:"absolute", left:0, height:"100%", width:`${(lm/mx)*100}%`, background:lt, opacity:.8, borderRadius:3 }} />
+                    <div style={{ height:5, background:u.border, borderRadius:3, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${(lm/mx)*100}%`, background:lt, opacity:.9, borderRadius:3 }} />
                     </div>
                   </div>
                 );
