@@ -3469,44 +3469,83 @@ function AnalysisTab({ u, users }) {
     );
   };
 
-  // Forest plot (effect sizes)
+  // Forest plot (effect sizes) — fixed scale, clipping arrows, proper colors
   const ForestPlot = () => {
     const rows = TEST_ROWS.filter(r => tests[r.k]?.cohensD != null);
     if (!rows.length) return null;
-    const W = 260, H = rows.length * 26 + 40;
-    const scale = d => Math.min(Math.max((d + 1.5) / 3 * W, 0), W);
-    const zero = scale(0);
+    const LBL_W = 130, PLOT_W = 320, ROW_H = 32, PAD_T = 20, PAD_B = 28;
+    const TOTAL_W = LBL_W + PLOT_W + 80;
+    const H = rows.length * ROW_H + PAD_T + PAD_B;
+    // Auto-scale: find max extent of all CIs, round up, cap at ±3
+    const allExtents = rows.flatMap(r => {
+      const t = tests[r.k];
+      return t?.ci95 ? [Math.abs(t.ci95.lower), Math.abs(t.ci95.upper), Math.abs(t.cohensD)] : [Math.abs(t.cohensD)];
+    }).filter(v => v != null && isFinite(v));
+    const maxExtent = allExtents.length ? Math.max(...allExtents) : 1;
+    const SCALE = Math.min(Math.ceil(maxExtent * 5) / 5 + 0.2, 3.0); // round to .2 steps, cap ±3
+    const px = d => LBL_W + ((d + SCALE) / (2 * SCALE)) * PLOT_W;
+    const zeroX = px(0);
+    // Grid lines at effect size thresholds
+    const gridVals = [-1.0, -0.8, -0.5, -0.2, 0, 0.2, 0.5, 0.8, 1.0, SCALE, -SCALE].filter((v, i, a) => Math.abs(v) <= SCALE && a.indexOf(v) === i).sort((a,b)=>a-b);
     return (
-      <svg width="100%" viewBox={`0 0 ${W + 120} ${H}`} style={{ overflow:"visible" }}>
-        {/* Grid lines */}
-        {[-1, -0.8, -0.5, -0.2, 0, 0.2, 0.5, 0.8, 1].map(v => (
-          <line key={v} x1={120 + scale(v)} y1={0} x2={120 + scale(v)} y2={H - 30} stroke={v===0?u.text3:u.border} strokeWidth={v===0?1.5:0.5} strokeDasharray={v===0?"":"3,2"} />
+      <svg width="100%" viewBox={`0 0 ${TOTAL_W} ${H}`} style={{ overflow:"visible", display:"block" }}>
+        {/* Grid */}
+        {gridVals.map(v => (
+          <g key={v}>
+            <line x1={px(v)} y1={PAD_T-8} x2={px(v)} y2={H-PAD_B}
+              stroke={v===0 ? u.text2 : u.border}
+              strokeWidth={v===0 ? 1.5 : 0.5}
+              strokeDasharray={v===0 ? "" : "3,2"} />
+            <text x={px(v)} y={H-PAD_B+12} fontSize={9} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{v>0?"+":""}{v}</text>
+          </g>
         ))}
+        {/* Direction labels */}
+        <text x={LBL_W + 8} y={PAD_T-2} fontSize={8} fill={lt} fontFamily={L.font}>← Light better</text>
+        <text x={LBL_W + PLOT_W - 8} y={PAD_T-2} fontSize={8} fill={dk} textAnchor="end" fontFamily={L.font}>Dark better →</text>
+        {/* Rows */}
         {rows.map(({ k, l }, ri) => {
           const t = tests[k];
           const d = t.cohensD;
           const ci = t.ci95;
-          const y = ri * 26 + 16;
-          const xd = 120 + scale(d);
-          const ciL = ci ? 120 + scale(Math.max(-1.5, ci.lower)) : xd - 10;
-          const ciR = ci ? 120 + scale(Math.min(1.5, ci.upper)) : xd + 10;
-          const col = t.sig ? u.green : t.marginal ? u.orange : u.text3;
+          const y = PAD_T + ri * ROW_H + ROW_H / 2;
+          // Clamp to ±SCALE, track clipping
+          const rawL = ci ? ci.lower : d - 0.5;
+          const rawR = ci ? ci.upper : d + 0.5;
+          const clampL = Math.max(-SCALE, rawL);
+          const clampR = Math.min(SCALE,  rawR);
+          const clippedL = rawL < -SCALE;
+          const clippedR = rawR >  SCALE;
+          const xL = px(clampL), xR = px(clampR), xD = px(Math.max(-SCALE, Math.min(SCALE, d)));
+          // Color: sig=green, marginal=orange, else use direction (dk/lt)
+          const col = t.sig ? u.green : t.marginal ? u.orange : d > 0 ? u.accent2 : u.accent;
           return (
             <g key={k}>
-              <text x={115} y={y + 4} fontSize={10} fill={u.text2} textAnchor="end" fontFamily={L.font}>{l}</text>
-              <line x1={ciL} y1={y} x2={ciR} y2={y} stroke={col} strokeWidth={1.5} />
-              <line x1={ciL} y1={y - 4} x2={ciL} y2={y + 4} stroke={col} strokeWidth={1.5} />
-              <line x1={ciR} y1={y - 4} x2={ciR} y2={y + 4} stroke={col} strokeWidth={1.5} />
-              <rect x={xd - 5} y={y - 5} width={10} height={10} rx={2} fill={col} />
-              <text x={120 + scale(d) + 14} y={y + 4} fontSize={9} fill={col} fontFamily={L.mono}>{d > 0 ? "+" : ""}{d}</text>
+              {/* Label */}
+              <text x={LBL_W-8} y={y+4} fontSize={11} fill={u.text2} textAnchor="end" fontFamily={L.font}>{l}</text>
+              {/* CI line */}
+              <line x1={xL} y1={y} x2={xR} y2={y} stroke={col} strokeWidth={1.5} opacity={0.7} />
+              {/* Whisker end caps — or arrows if clipped */}
+              {clippedL
+                ? <polygon points={`${xL},${y-5} ${xL-8},${y} ${xL},${y+5}`} fill={col} opacity={0.6} />
+                : <><line x1={xL} y1={y-5} x2={xL} y2={y+5} stroke={col} strokeWidth={1.5} /></>}
+              {clippedR
+                ? <polygon points={`${xR},${y-5} ${xR+8},${y} ${xR},${y+5}`} fill={col} opacity={0.6} />
+                : <><line x1={xR} y1={y-5} x2={xR} y2={y+5} stroke={col} strokeWidth={1.5} /></>}
+              {/* Point estimate square */}
+              <rect x={xD-6} y={y-6} width={12} height={12} rx={2} fill={col} />
+              {/* d value */}
+              <text x={LBL_W+PLOT_W+8} y={y+4} fontSize={10} fill={col} fontFamily={L.mono} fontWeight="600">{d>0?"+":""}{d}</text>
+              {/* Sig badge */}
+              {(t.sig||t.marginal) && <text x={LBL_W+PLOT_W+54} y={y+4} fontSize={9} fill={col} fontFamily={L.font}>{t.sig?"★":"~"}</text>}
             </g>
           );
         })}
-        {/* X axis labels */}
-        {[-1, -0.5, 0, 0.5, 1].map(v => (
-          <text key={v} x={120 + scale(v)} y={H - 10} fontSize={9} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{v}</text>
-        ))}
-        <text x={120 + zero} y={H - 2} fontSize={8} fill={u.text3} textAnchor="middle" fontFamily={L.font}>← Light better · 0 · Dark better →</text>
+        {/* Legend */}
+        <rect x={LBL_W} y={H-PAD_B+20} width={10} height={10} rx={2} fill={u.green} />
+        <text x={LBL_W+14} y={H-PAD_B+29} fontSize={9} fill={u.green} fontFamily={L.font}>★ Significant</text>
+        <rect x={LBL_W+90} y={H-PAD_B+20} width={10} height={10} rx={2} fill={u.orange} />
+        <text x={LBL_W+104} y={H-PAD_B+29} fontSize={9} fill={u.orange} fontFamily={L.font}>~ Marginal</text>
+        <text x={LBL_W+190} y={H-PAD_B+29} fontSize={9} fill={u.text3} fontFamily={L.font}>▶ CI extends beyond ±{SCALE.toFixed(1)}</text>
       </svg>
     );
   };
