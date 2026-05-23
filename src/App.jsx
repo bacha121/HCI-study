@@ -3418,14 +3418,6 @@ function AnalysisTab({ u, users }) {
     practiceEffect:pe=null, corrMatrix:CM=[], corrLabels:CL=[], taskTests:TT=[] } = res;
 
   const N = pairs.length, NT = 11, ALPHA = (0.05/NT).toFixed(4);
-  const sigRows  = TEST_ROWS.filter(r => tests[r.k]?.sig);
-  const margRows = TEST_ROWS.filter(r => tests[r.k]?.marginal);
-
-  const fv = v => v==null||isNaN(v)?'—':Math.abs(v)>=100?Math.round(v)+'':Math.abs(v)>=10?v.toFixed(1):v.toFixed(3);
-  const sigCol = t => t?.sig?SIG:t?.marginal?MAR:NS;
-  const dCol   = d => d==null?NS:Math.abs(d)>=0.8?u.red:Math.abs(d)>=0.5?MAR:Math.abs(d)>=0.2?u.teal:NS;
-  const rowBg  = t => t?.sig?`${SIG}08`:t?.marginal?`${MAR}06`:'transparent';
-
   const TEST_ROWS = [
     { k:'acc',    l:'Accuracy',         hi:true  },
     { k:'rt',     l:'Response Time',    hi:false },
@@ -3439,6 +3431,14 @@ function AnalysisTab({ u, users }) {
     { k:'fa',     l:'Fatigue',          hi:false },
     { k:'sa',     l:'Satisfaction',     hi:true  },
   ];
+
+  const sigRows  = TEST_ROWS.filter(r => tests[r.k]?.sig);
+  const margRows = TEST_ROWS.filter(r => tests[r.k]?.marginal);
+
+  const fv = v => v==null||isNaN(v)?'—':Math.abs(v)>=100?Math.round(v)+'':Math.abs(v)>=10?v.toFixed(1):v.toFixed(3);
+  const sigCol = t => t?.sig?SIG:t?.marginal?MAR:NS;
+  const dCol   = d => d==null?NS:Math.abs(d)>=0.8?u.red:Math.abs(d)>=0.5?MAR:Math.abs(d)>=0.2?u.teal:NS;
+  const rowBg  = t => t?.sig?`${SIG}08`:t?.marginal?`${MAR}06`:'transparent';
 
   // ── Sub-components ────────────────────────────────────────────────────────────
   const Chip = ({ label, color, bg }) => (
