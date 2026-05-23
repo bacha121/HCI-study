@@ -4055,12 +4055,6 @@ function AnalysisTab({ u, users }) {
 
       {/* Notice banner */}
       <div style={{ display: "flex", alignItems: "center", gap: L.spMd, padding: `${L.spSm}px ${L.spMd}px`, background: `${u.red}0a`, border: `1px solid ${u.red}22`, borderRadius: R.md, marginBottom: 24 }}>
-        <span style={{ fontSize: 16 }}>⚠</span>
-        <span style={{ fontSize: L.fsSm, color: u.text2 }}><strong style={{ color: u.text }}>{highCount} high-priority</strong> limitations identified across {total} total items — these carry the greatest potential to affect result interpretation.</span>
-      </div>
-
-      {/* Limitation cards */}
-// ─── LIMITATIONS TAB ─────────────────────────────────────────────────────────────
 function LimitationsTab({ u }) {
   const lims = [
     { title:"Sample Size",            sev:"High",     desc:"The current sample size is insufficient for reliable statistical inference. Paired t-tests require n ≥ 20 for adequate power (1−β ≥ 0.80) at medium effect sizes with Bonferroni correction. Results should be treated as preliminary." },
@@ -4072,8 +4066,8 @@ function LimitationsTab({ u }) {
     { title:"Self-Report Validity",   sev:"Low",      desc:"Comfort ratings rely on participant self-report, which is subject to response bias, demand characteristics, and anchoring effects. Validated psychophysical measures (e.g. eye-tracking) would supplement." },
     { title:"Normality Assumption",   sev:"Low",      desc:"Paired t-tests assume normally distributed difference scores. The Jarque-Bera test flags violations; Wilcoxon signed-rank alternatives are computed and reported in the Analysis tab." },
   ];
-  const sevColor = s => s==="High"?u.red:s==="Moderate"?MAR:u.teal;
   const MAR = "#f97316";
+  const sevColor = s => s==="High"?u.red:s==="Moderate"?MAR:u.teal;
   return (
     <div className="au" style={{ fontFamily:L.font }}>
       <SectionHdr u={u} eyebrow="Methodology" title="Limitations & Validity"
