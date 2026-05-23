@@ -2803,11 +2803,11 @@ function VisualComfortTab({ user, u }) {
   ];
 
   const LikertRow = ({ value, color }) => (
-    <div style={{ display:"flex", gap:3 }}>
+    <div style={{ display:"flex", gap:2 }}>
       {[1,2,3,4,5,6,7].map(n => {
         const active = value != null && n === Math.round(value);
         return (
-          <div key={n} style={{ flex:1, height:40, borderRadius:R.sm, display:"flex", alignItems:"center", justifyContent:"center", fontSize:L.fsSm, fontWeight:active?L.fwBold:L.fwNorm, transition:"all .2s", background:active?color:u.fill, border:`1px solid ${active?color:u.border}`, color:active?"#fff":u.text3 }}>
+          <div key={n} style={{ flex:1, height:36, borderRadius:R.sm, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, fontWeight:active?L.fwBold:L.fwNorm, transition:"all .2s", background:active?color:u.fill, border:`1px solid ${active?color:u.border}`, color:active?"#fff":u.text3 }}>
             {n}
           </div>
         );
@@ -2822,6 +2822,48 @@ function VisualComfortTab({ user, u }) {
     </div>
   );
 
+  const ComfortDimCard = ({ label, icon, anchor1, anchor2, higherBetter, dkVal, ltVal }) => {
+    const dkBetter = dkVal!=null && ltVal!=null && (higherBetter ? dkVal>ltVal : dkVal<ltVal);
+    const ltBetter = dkVal!=null && ltVal!=null && (higherBetter ? ltVal>dkVal : ltVal<dkVal);
+    return (
+      <div style={{ borderBottom:`1px solid ${u.border}`, paddingBottom:L.spLg, marginBottom:L.spLg }}>
+        {/* Dimension label */}
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:L.spMd }}>
+          <span style={{ fontSize:20 }}>{icon}</span>
+          <div>
+            <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>{label}</div>
+            <div style={{ fontSize:L.fsXs, color:u.text3 }}>{anchor1} → {anchor2}</div>
+          </div>
+          {(dkBetter||ltBetter) && (
+            <span style={{ marginLeft:"auto", fontSize:L.fsXs, padding:"2px 10px", borderRadius:R.pill, background:dkBetter?`${u.accent2}18`:`${u.gold}18`, color:dkBetter?u.accent2:u.gold, border:`1px solid ${dkBetter?u.accent2:u.gold}28`, whiteSpace:"nowrap" }}>
+              {dkBetter?"🌙 Dark":"☀️ Light"} better
+            </span>
+          )}
+        </div>
+        {/* Dark row */}
+        <div style={{ marginBottom:10 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontSize:L.fsXs, fontWeight:L.fwSemi, color:u.accent2 }}>🌙 Dark Mode</span>
+            <span style={{ fontSize:L.fsSm, fontWeight:L.fwBold, color:u.accent2 }}>{dkVal!=null?`${dkVal}/7`:"—"}</span>
+          </div>
+          {dkVal != null ? <LikertRow value={dkVal} color={u.accent2} /> : <div style={{ fontSize:L.fsSm, color:u.text3, textAlign:"center", padding:8 }}>No data</div>}
+        </div>
+        {/* Light row */}
+        <div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+            <span style={{ fontSize:L.fsXs, fontWeight:L.fwSemi, color:u.gold }}>☀️ Light Mode</span>
+            <span style={{ fontSize:L.fsSm, fontWeight:L.fwBold, color:u.gold }}>{ltVal!=null?`${ltVal}/7`:"—"}</span>
+          </div>
+          {ltVal != null ? <LikertRow value={ltVal} color={u.gold} /> : <div style={{ fontSize:L.fsSm, color:u.text3, textAlign:"center", padding:8 }}>No data</div>}
+        </div>
+        {/* Scale anchors */}
+        <div style={{ display:"flex", justifyContent:"space-between", marginTop:6, fontSize:10, color:u.text3 }}>
+          <span>1 — {anchor1}</span><span>7 — {anchor2}</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
       <SectionHdr u={u} eyebrow="Post-Phase Survey" title="Comfort Ratings" sub="Self-reported ratings collected after completing each interface phase. Scale: 1 (low) → 7 (high)." />
@@ -2830,62 +2872,15 @@ function VisualComfortTab({ user, u }) {
         <EmptyState u={u} icon="📋" title="No survey data yet" body="Comfort ratings are collected at the end of each experiment phase." />
       ) : (
         <Card u={u} style={{ padding:L.spLg }}>
-          <SectionHeader title="Post-Phase Comfort Survey" sub="Collected after each interface phase · Scale: 1 (low) → 7 (high)" />
-
-          {/* Column headers */}
-          <div style={{ display:"grid", gridTemplateColumns:"160px 1fr 1fr", gap:L.spMd, marginBottom:L.spMd }}>
-            <div />
-            {[{ label:"🌙 Dark Mode", color:u.accent2 },{ label:"☀️ Light Mode", color:u.gold }].map(({ label, color }) => (
-              <div key={label} style={{ textAlign:"center", padding:"6px 12px", borderRadius:R.md, background:`${color}10`, border:`1px solid ${color}28` }}>
-                <span style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color }}>{label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Likert rows */}
-          <div style={{ display:"flex", flexDirection:"column", gap:L.spXl }}>
-            {COMFORT_DIMS.map(({ key, label, icon, anchor1, anchor2, higherBetter }) => {
-              const dk = dkC?.[key], lt = ltC?.[key];
-              const dkBetter = dk!=null && lt!=null && (higherBetter ? dk>lt : dk<lt);
-              const ltBetter = dk!=null && lt!=null && (higherBetter ? lt>dk : lt<dk);
-              return (
-                <div key={key}>
-                  <div style={{ display:"grid", gridTemplateColumns:"160px 1fr 1fr", gap:L.spMd, alignItems:"start" }}>
-                    <div style={{ paddingTop:8 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
-                        <span style={{ fontSize:16 }}>{icon}</span>
-                        <span style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{label}</span>
-                      </div>
-                      <div style={{ fontSize:L.fsXs, color:u.text3, lineHeight:1.4 }}>{anchor1} →<br/>{anchor2}</div>
-                    </div>
-                    {[{ value:dk, color:u.accent2, better:dkBetter },{ value:lt, color:u.gold, better:ltBetter }].map(({ value, color, better }, i) => (
-                      <div key={i}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:L.spSm }}>
-                          <span style={{ fontSize:L.fsXs, color, fontWeight:L.fwSemi }}>Score: {value??"-"}/7</span>
-                          {better && <span style={{ fontSize:L.fsXs, color:u.green, fontWeight:L.fwSemi }}>✓ Better</span>}
-                        </div>
-                        <LikertRow value={value} color={color} />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ display:"flex", justifyContent:"space-between", marginLeft:176, marginTop:L.spSm, gap:L.spMd }}>
-                    {[0,1].map(i => (
-                      <div key={i} style={{ flex:1, display:"flex", justifyContent:"space-between" }}>
-                        <span style={{ fontSize:L.fsXs, color:u.text3 }}>1 — {anchor1}</span>
-                        <span style={{ fontSize:L.fsXs, color:u.text3 }}>7 — {anchor2}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ borderBottom:`1px solid ${u.border}`, marginTop:L.spMd }} />
-                </div>
-              );
-            })}
-          </div>
+          {COMFORT_DIMS.map(({ key, label, icon, anchor1, anchor2, higherBetter }) => (
+            <ComfortDimCard key={key} label={label} icon={icon} anchor1={anchor1} anchor2={anchor2} higherBetter={higherBetter} dkVal={dkC?.[key]} ltVal={ltC?.[key]} />
+          ))}
         </Card>
       )}
     </div>
   );
 }
+
 // ─── OBJECTIVE TAB ────────────────────────────────────────────────────────────────
 function ObjectiveTab({ user, u }) {
   const stats = useMemo(() => computeStats(user), [user]);
@@ -2930,37 +2925,39 @@ function ObjectiveTab({ user, u }) {
           <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Objective performance across both theme conditions</div>
         </div>
         <div className="tbl-wrap">
-        <table style={{ width:"100%", borderCollapse:"collapse" }}>
+        <table style={{ width:"100%", borderCollapse:"collapse", tableLayout:"fixed" }}>
           <thead>
             <tr>
-              <th style={thS}>Metric</th>
-              <th style={{ ...thS, color:u.accent2 }}>🌙 Dark Mode</th>
-              <th style={{ ...thS, color:u.gold }}>☀️ Light Mode</th>
-              <th style={thS}>Difference</th>
-              <th style={thS}>Better</th>
+              <th style={{ ...thS, width:"28%" }}>Metric</th>
+              <th style={{ ...thS, color:u.accent2, width:"18%", textAlign:"center" }}>🌙 Dark</th>
+              <th style={{ ...thS, color:u.gold,    width:"18%", textAlign:"center" }}>☀️ Light</th>
+              <th style={{ ...thS, width:"18%",     textAlign:"center" }}>Diff</th>
+              <th style={{ ...thS, width:"18%",     textAlign:"center" }}>Better</th>
             </tr>
           </thead>
           <tbody>
             {[
               { metric:"Accuracy",      dk:stats.accDk,       lt:stats.accLt,       fmt:fmtPct,               higherBetter:true  },
               { metric:"Response Time", dk:stats.rtDk,        lt:stats.rtLt,        fmt:fmtMs,                higherBetter:false },
-              { metric:"Error Count",   dk:stats.errDk,       lt:stats.errLt,       fmt:v=>v!=null?Math.round(v)+"":"—", higherBetter:false },
-              { metric:"NASA Workload", dk:stats.nasaTotalDk, lt:stats.nasaTotalLt, fmt:v=>v!=null?v.toFixed(1):"—",     higherBetter:false },
-              { metric:"Mental Demand", dk:stats.efDk,        lt:stats.efLt,        fmt:v=>fmt(v,1),          higherBetter:false },
+              { metric:"Errors",        dk:stats.errDk,       lt:stats.errLt,       fmt:v=>v!=null?Math.round(v)+"":"—", higherBetter:false },
+              { metric:"NASA Load",     dk:stats.nasaTotalDk, lt:stats.nasaTotalLt, fmt:v=>v!=null?v.toFixed(1):"—",     higherBetter:false },
+              { metric:"Mental",        dk:stats.efDk,        lt:stats.efLt,        fmt:v=>fmt(v,1),          higherBetter:false },
             ].map(({ metric, dk, lt, fmt:f, higherBetter }) => {
               const diff = dk!=null && lt!=null ? dk-lt : null;
               const dkBetter = diff!=null && (higherBetter ? diff>0 : diff<0);
               const ltBetter = diff!=null && (higherBetter ? diff<0 : diff>0);
+              const diffDisplay = diff!=null ? (diff>0?"+":"")+f(diff) : "—";
+              const diffColor = diff!=null ? (dkBetter?u.green:ltBetter?u.red:u.text3) : u.text3;
               return (
                 <tr key={metric}>
-                  <td style={tdS(u.text)}>{metric}</td>
-                  <td style={tdS(u.accent2)}>{dk!=null?f(dk):"—"}</td>
-                  <td style={tdS(u.gold)}>{lt!=null?f(lt):"—"}</td>
-                  <td style={tdS(diff!=null?(diff>0?u.green:u.red):u.text3)}>{diff!=null?(diff>0?"+":"")+f(diff):"—"}</td>
-                  <td style={{ padding:"9px 12px", borderBottom:`1px solid ${u.border}` }}>
-                    {dkBetter && <span style={{ fontSize:L.fsXs, padding:"2px 8px", borderRadius:R.pill, background:`${u.accent2}18`, color:u.accent2, border:`1px solid ${u.accent2}28` }}>🌙 Dark</span>}
-                    {ltBetter && <span style={{ fontSize:L.fsXs, padding:"2px 8px", borderRadius:R.pill, background:`${u.gold}18`, color:u.gold, border:`1px solid ${u.gold}28` }}>☀️ Light</span>}
-                    {!dkBetter && !ltBetter && <span style={{ fontSize:L.fsXs, color:u.text3 }}>Equal</span>}
+                  <td style={{ ...tdS(u.text), fontSize:L.fsSm, wordBreak:"keep-all" }}>{metric}</td>
+                  <td style={{ ...tdS(u.accent2), textAlign:"center", fontFamily:L.mono, fontSize:L.fsSm }}>{dk!=null?f(dk):"—"}</td>
+                  <td style={{ ...tdS(u.gold),    textAlign:"center", fontFamily:L.mono, fontSize:L.fsSm }}>{lt!=null?f(lt):"—"}</td>
+                  <td style={{ ...tdS(diffColor), textAlign:"center", fontFamily:L.mono, fontSize:L.fsSm }}>{diffDisplay}</td>
+                  <td style={{ padding:"8px 6px", borderBottom:`1px solid ${u.border}`, textAlign:"center" }}>
+                    {dkBetter && <span style={{ fontSize:10, padding:"2px 6px", borderRadius:R.pill, background:`${u.accent2}18`, color:u.accent2, border:`1px solid ${u.accent2}28`, whiteSpace:"nowrap" }}>🌙 Dark</span>}
+                    {ltBetter && <span style={{ fontSize:10, padding:"2px 6px", borderRadius:R.pill, background:`${u.gold}18`, color:u.gold, border:`1px solid ${u.gold}28`, whiteSpace:"nowrap" }}>☀️ Light</span>}
+                    {!dkBetter && !ltBetter && <span style={{ fontSize:10, color:u.text3 }}>—</span>}
                   </td>
                 </tr>
               );
