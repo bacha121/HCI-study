@@ -120,25 +120,38 @@ const db = {
   cur: () => { try { return localStorage.getItem(K.c) || null; } catch { return null; } },
   setCur: (id) => { try { if (id) localStorage.setItem(K.c, id); else localStorage.removeItem(K.c); } catch {} },
 
-  // save — writes locally AND syncs to Supabase
+  // save — writes locally AND syncs to Supabase with retry
   save: (u) => {
     const a = db.all();
     const i = a.findIndex(x => x.id === u.id);
     if (i >= 0) a[i] = u; else a.push(u);
     try { localStorage.setItem(K.u, JSON.stringify(a)); } catch {}
-    if (supa) supa.from("participants").upsert({ id: u.id, data: u, updated_at: new Date().toISOString() }).then(() => {}).catch(() => {});
+    if (!supa) return;
+    const payload = { id: u.id, data: u, updated_at: new Date().toISOString() };
+    const attempt = (tries) => {
+      supa.from("participants").upsert(payload).then(({ error }) => {
+        if (error) {
+          console.warn("Supabase sync error:", error.message);
+          if (tries > 0) setTimeout(() => attempt(tries - 1), 2000);
+        }
+      }).catch(err => {
+        if (tries > 0) setTimeout(() => attempt(tries - 1), 2000);
+      });
+    };
+    attempt(3); // up to 3 retry attempts
   },
 
-  // syncFromCloud — pulls all Supabase rows into localStorage (called on admin login)
+  // syncFromCloud — pulls all Supabase rows into localStorage, cloud is source of truth
   syncFromCloud: async () => {
     if (!supa) return 0;
     try {
       const { data, error } = await supa.from("participants").select("data");
       if (error || !data?.length) return 0;
-      const cloud = data.map(r => r.data);
+      const cloud = data.map(r => r.data).filter(Boolean);
       const local = db.all();
-      // Cloud wins for matching IDs (most up-to-date)
-      const merged = [...local.filter(l => !cloud.find(c => c.id === l.id)), ...cloud];
+      // Cloud wins: merge local-only participants + all cloud participants (cloud is authoritative)
+      const localOnly = local.filter(l => !cloud.find(c => c.id === l.id));
+      const merged = [...localOnly, ...cloud];
       localStorage.setItem(K.u, JSON.stringify(merged));
       return cloud.length;
     } catch { return 0; }
@@ -4787,12 +4800,18 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
     if (!supa) return;
     setSyncing(true);
     db.syncFromCloud().then(n => {
-      if (n > 0) setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
+      // Always update from local (which was just synced from cloud)
+      setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
       setSyncing(false);
     });
   }, []);
 
-  const refresh = () => setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
+  const refresh = async () => {
+    setSyncing(true);
+    await db.syncFromCloud();
+    setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
+    setSyncing(false);
+  };
   const [delConfirm, setDelConfirm] = useState(null);
 
   const deleteParticipant = async (pid) => {
@@ -5495,7 +5514,12 @@ export default function App() {
     setTaskData(td); setTaskIdx(0); setTrialIdx(0); setTrialRes([]); setScreen("instructions");
   };
 
-  const handlePref = pref => { const upd = { ...user, pref, completed: true, completedAt: new Date().toISOString() }; setUser(upd); db.save(upd); setScreen("debrief"); };
+  const handlePref = pref => {
+    // Read latest from db to avoid stale state overwriting experiments saved in handleNASA
+    const latest = db.get(user.id) || user;
+    const upd = { ...latest, pref, completed: true, completedAt: new Date().toISOString() };
+    setUser(upd); db.save(upd); setScreen("debrief");
+  };
 
   const Wrap = ({ children }) => (
     <div style={{ minHeight: "100vh", background: u.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
