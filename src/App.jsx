@@ -560,23 +560,44 @@ function computeAnalysis(users) {
 
   const desc = Object.fromEntries(METRICS.map(m => [m.k, { dark: stat.describe(dk(m.k)), light: stat.describe(lt(m.k)) }]));
 
-  // Paired t-tests for key metrics — with Bonferroni correction
-  const TEST_KEYS = ["acc","tt","rt","err","nasa","nasFR","nasaMD","vc","es","fa","sa"];
-  const N_TESTS = TEST_KEYS.length; // 11 simultaneous tests
-  const ALPHA_RAW = 0.05;
-  const ALPHA_BONF = ALPHA_RAW / N_TESTS; // 0.00455
+  // ── Statistical tests — effect-size primary, α=.05 uncorrected, FDR supplementary ──
+  const TEST_KEYS   = ["acc","tt","rt","err","nasa","nasFR","nasaMD","vc","es","fa","sa"];
+  const N_TESTS     = TEST_KEYS.length;
+  const ALPHA_RAW   = 0.05;                    // primary threshold (exploratory)
+  const ALPHA_BONF  = ALPHA_RAW / N_TESTS;     // reference only (0.0045)
 
-  const tests = Object.fromEntries(TEST_KEYS.map(k => {
+  // Step 1 — run all paired t-tests
+  const rawTests = Object.fromEntries(TEST_KEYS.map(k => {
     const paired = pairs.map(p=>[p.dark[k],p.light[k]]).filter(([a,b])=>a!=null&&b!=null);
     if (paired.length < 2) return [k, null];
     const result = stat.pairedT(paired.map(p=>p[0]), paired.map(p=>p[1]));
-    if (!result) return [k, null];
-    const p = result.p;
+    return [k, result || null];
+  }));
+
+  // Step 2 — Benjamini-Hochberg FDR correction
+  const validKeys  = TEST_KEYS.filter(k => rawTests[k]?.p != null);
+  const sortedByP  = [...validKeys].sort((a,b) => rawTests[a].p - rawTests[b].p);
+  const fdrThresh  = {};
+  let lastSig = -1;
+  sortedByP.forEach((k, i) => {
+    const threshold = ((i + 1) / N_TESTS) * ALPHA_RAW;
+    if (rawTests[k].p <= threshold) lastSig = i;
+  });
+  sortedByP.forEach((k, i) => { fdrThresh[k] = i <= lastSig; });
+
+  // Step 3 — assemble final tests object with all three significance levels
+  const tests = Object.fromEntries(TEST_KEYS.map(k => {
+    const r = rawTests[k]; if (!r) return [k, null];
+    const p = r.p;
+    const pBonf = p != null ? Math.min(1, p * N_TESTS) : null;
     return [k, {
-      ...result,
-      sig:      p != null && p < ALPHA_BONF,        // Bonferroni-corrected significance
-      marginal: p != null && p >= ALPHA_BONF && p < ALPHA_RAW, // marginally significant
-      pBonf:    ALPHA_BONF,
+      ...r,
+      sig:       p != null && p < ALPHA_RAW,          // PRIMARY: uncorrected α = .05
+      fdrSig:    fdrThresh[k] ?? false,               // SUPPLEMENTARY: FDR corrected
+      bonferroni: p != null && p < ALPHA_BONF,        // REFERENCE: Bonferroni (strict)
+      marginal:  false,                               // not used with uncorrected α
+      pBonf,
+      pBonferroniAdj: pBonf,
     }];
   }));
 
@@ -3417,7 +3438,10 @@ function AnalysisTab({ u, users }) {
     power:resPower={}, wilcoxon:resWilcoxon={}, orderEffect:resOrderEffect={},
     practiceEffect:pe=null, corrMatrix:CM=[], corrLabels:CL=[], taskTests:TT=[] } = res;
 
-  const N = pairs.length, NT = 11, ALPHA = (0.05/NT).toFixed(4);
+  const N = pairs.length, NT = 11;
+  const ALPHA = '0.050';   // primary: uncorrected
+  const ALPHA_FDR = 'FDR'; // Benjamini-Hochberg
+  const ALPHA_BONF_LABEL = (0.05/NT).toFixed(4); // reference only
   const TEST_ROWS = [
     { k:'acc',    l:'Accuracy',         hi:true  },
     { k:'rt',     l:'Response Time',    hi:false },
@@ -3634,16 +3658,16 @@ function AnalysisTab({ u, users }) {
       {/* ══ 01 EXECUTIVE SUMMARY ══════════════════════════════════════════════ */}
       <SectionWrap>
         <SHdr num="01" title="Executive Summary"
-          sub={`Paired-samples t-tests · ${N} complete pairs · Bonferroni α = ${ALPHA} · ${NT} simultaneous tests`} />
+          sub={`Paired-samples t-tests · ${N} complete pairs · Primary α = .05 (uncorrected) · FDR & Bonferroni reported as reference`} />
         <div style={{ padding:pad }}>
 
           {/* KPI row */}
           <div style={{ display:'grid', gridTemplateColumns:`repeat(${isTablet?4:2},1fr)`, gap:isTablet?0:1, marginBottom:28, borderRadius:12, overflow:'hidden', border:`1px solid ${u.border}` }}>
             {[
-              { v:N, l:'Pairs', s:'complete participants', c:u.accent },
-              { v:`${sigRows.length}/${NT}`, l:'Significant', s:`Bonferroni p < ${ALPHA}`, c:sigRows.length?SIG:u.text3 },
-              { v:`${margRows.length}/${NT}`, l:'Marginal', s:'uncorrected p < .05', c:margRows.length?MAR:u.text3 },
-              { v:ALPHA, l:'Adjusted α', s:'0.05 ÷ 11 tests', c:u.teal },
+              { v:N,                          l:'Pairs',          s:'complete participants',                c:u.accent },
+              { v:`${sigRows.length}/${NT}`,  l:'Significant',    s:'uncorrected p < .05 (primary)',       c:sigRows.length?SIG:u.text3 },
+              { v:`${Object.values(tests).filter(t=>t?.fdrSig).length}/${NT}`, l:'FDR Significant', s:'Benjamini-Hochberg corrected', c:u.teal },
+              { v:'α = .05',                  l:'Primary α',      s:'exploratory · effect sizes primary',  c:u.green  },
             ].map(({ v,l,s,c },i,a) => (
               <div key={l} style={{ padding:'20px 16px', textAlign:'center', borderRight:i<a.length-1?`1px solid ${u.border}`:'none', borderBottom:!isTablet&&i<2?`1px solid ${u.border}`:'none' }}>
                 <div style={{ fontSize:30, fontWeight:800, color:c, fontFamily:L.mono, lineHeight:1, letterSpacing:-1 }}>{v}</div>
@@ -3745,30 +3769,34 @@ function AnalysisTab({ u, users }) {
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', minWidth:700 }}>
               <thead>
-                <tr>{['Variable','Dark M (SD)','Light M (SD)','Δ Mean','95% CI','t (df)','p','p (adj.)','d','Power','Result'].map(h=><th key={h} style={TH}>{h}</th>)}</tr>
+                <tr>{['Variable','Dark M (SD)','Light M (SD)','Δ Mean','95% CI','t (df)','p (raw)','FDR','Bonf. p','d','Power','Result'].map(h=><th key={h} style={TH}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {TEST_ROWS.map(({ k,l }) => {
                   const t=tests[k], d=desc[k]; if (!t) return null;
                   const dm=d?.dark?.mean, dsd=d?.dark?.sd, lm=d?.light?.mean, lsd=d?.light?.sd;
                   const diff=dm!=null&&lm!=null?dm-lm:null;
-                  const pAdj=t.p!=null?Math.min(1,t.p*NT):null;
                   const pw=resPower?.[k];
-                  const isNS=!t.sig&&!t.marginal;
+                  const isSig = t.sig;           // uncorrected p < .05 (primary)
+                  const isFDR = t.fdrSig;         // FDR corrected
+                  const isBonf = t.bonferroni;    // Bonferroni (strict)
+                  const sigLabel = isBonf?'★★ Bonf.':isFDR?'★ FDR':isSig?'~ p<.05':'n.s.';
+                  const sigColor = isBonf?SIG:isFDR?u.teal:isSig?MAR:u.text3;
                   return (
-                    <tr key={k} style={{ background:rowBg(t), opacity:isNS?.75:1 }}>
-                      <td style={{ ...TD(u.text), fontWeight:t.sig?700:400 }}>{l}</td>
+                    <tr key={k} style={{ background:isBonf?`${SIG}08`:isFDR?`${u.teal}06`:isSig?`${MAR}04`:'transparent', opacity:!isSig?.75:1 }}>
+                      <td style={{ ...TD(u.text), fontWeight:isSig?700:400 }}>{l}</td>
                       <td style={TD(DK,true)}>{fv(dm)} <span style={{ color:u.text3 }}>({fv(dsd)})</span></td>
                       <td style={TD(LT,true)}>{fv(lm)} <span style={{ color:u.text3 }}>({fv(lsd)})</span></td>
                       <td style={{ ...TD(diff!=null?(diff>0?SIG:u.red):u.text3,true) }}>{diff!=null?(diff>0?'+':'')+fv(diff):'—'}</td>
                       <td style={{ ...TD(u.text3,true), fontSize:10 }}>{t.ci95?`[${fv(t.ci95.lower)}, ${fv(t.ci95.upper)}]`:'—'}</td>
                       <td style={TD(u.teal,true)}>{t.t} ({t.df})</td>
-                      <td style={TD(t.p<.05?MAR:u.text3,true)}>{t.p?.toFixed(4)||'—'}</td>
-                      <td style={{ ...TD(t.sig?SIG:t.marginal?MAR:u.text3,true), fontWeight:t.sig?700:400 }}>{pAdj?.toFixed(4)||'—'}</td>
-                      <td style={TD(dCol(t.cohensD),true)}>{t.cohensD!=null?(t.cohensD>0?'+':'')+t.cohensD:'—'}</td>
+                      <td style={{ ...TD(isSig?MAR:u.text3,true), fontWeight:isSig?700:400 }}>{t.p?.toFixed(4)||'—'}</td>
+                      <td style={{ ...TD(isFDR?u.teal:u.text3,true), fontWeight:isFDR?700:400 }}>{isFDR?'✓ Yes':'No'}</td>
+                      <td style={TD(isBonf?SIG:u.text3,true)}>{t.pBonf?.toFixed(4)||'—'}</td>
+                      <td style={{ ...TD(dCol(t.cohensD),true), fontWeight:700 }}>{t.cohensD!=null?(t.cohensD>0?'+':'')+t.cohensD:'—'}</td>
                       <td style={TD(pw>=.8?SIG:pw>=.5?MAR:u.text3,true)}>{pw!=null?(pw*100).toFixed(0)+'%':'—'}</td>
                       <td style={{ padding:'8px 14px', borderBottom:`1px solid ${u.border}` }}>
-                        <Chip label={t.sig?'★ Sig':t.marginal?'~ Mar':'n.s.'} color={sigCol(t)} />
+                        <Chip label={sigLabel} color={sigColor} />
                       </td>
                     </tr>
                   );
@@ -3776,7 +3804,7 @@ function AnalysisTab({ u, users }) {
               </tbody>
             </table>
             <div style={{ padding:'10px 16px', fontSize:11, color:u.text3, background:u.fill, borderTop:`1px solid ${u.border}` }}>
-              Δ = Dark − Light · p adj. = min(raw p × {NT}, 1) · Power at α = {ALPHA} · Non-significant rows shown at reduced opacity
+              Δ = Dark − Light · Primary: p (raw) < .05 · FDR: Benjamini-Hochberg · Bonf. p = min(raw p × 11, 1) · Effect size (d) is the primary evidence
             </div>
           </div>
         )}
@@ -3784,7 +3812,7 @@ function AnalysisTab({ u, users }) {
           <div style={{ padding:pad, paddingTop:16 }}>
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
               {sigRows.length===0&&margRows.length===0
-                ? <span style={{ fontSize:13, color:u.text3 }}>No tests reached significance at α = {ALPHA}. Expand to view full results.</span>
+                ? <span style={{ fontSize:13, color:u.text3 }}>No tests reached significance at α = .05. Effect sizes and CIs are the primary evidence — expand to view.</span>
                 : <>
                     {sigRows.map(r=><Chip key={r.k} label={`${r.l}: d=${tests[r.k].cohensD}`} color={SIG} />)}
                     {margRows.map(r=><Chip key={r.k} label={`${r.l}: p=${tests[r.k].p?.toFixed(3)}`} color={MAR} />)}
@@ -4080,13 +4108,13 @@ function AnalysisTab({ u, users }) {
             <div style={{ padding:'24px 28px', background:u.fill, borderRadius:10, border:`1px solid ${u.border}`, userSelect:'all', cursor:'text' }}>
               {[
                 { head:'Participants', body:`A total of ${N} participant${N!==1?'s':''} completed a within-subjects experiment comparing dark mode and light mode interfaces across ${CFG.tasks.length} cognitive tasks. Participants were counterbalanced using alternating DL/LD assignment (DL: n = ${cb?.dl??'—'}, LD: n = ${cb?.ld??'—'}).` },
-                { head:'Statistical Analysis', body:`Paired-samples t-tests were conducted for ${NT} dependent variables. A Bonferroni correction controlled the familywise error rate (adjusted α = ${ALPHA}). Effect sizes are reported as Cohen's d with 95% confidence intervals. Where Jarque-Bera tests indicated non-normality, Wilcoxon signed-rank tests were also computed.` },
+                { head:'Statistical Analysis', body:`Paired-samples t-tests were conducted for ${NT} dependent variables. Given the exploratory nature of this study, results are interpreted primarily through effect sizes (Cohen's d) and 95% confidence intervals, with uncorrected p-values (α = .05) as the statistical threshold. FDR correction (Benjamini-Hochberg procedure) is reported as a supplementary measure, and Bonferroni-corrected values (α = ${ALPHA_BONF_LABEL}) are included for reference. Where Jarque-Bera tests indicated non-normality, Wilcoxon signed-rank tests were conducted as non-parametric alternatives.` },
                 tests.acc && { head:'Accuracy', body:`Mean accuracy in dark mode (M = ${fv(desc.acc?.dark?.mean)}, SD = ${fv(desc.acc?.dark?.sd)}) was compared with light mode (M = ${fv(desc.acc?.light?.mean)}, SD = ${fv(desc.acc?.light?.sd)}). A paired-samples t-test ${tests.acc.sig?'revealed a statistically significant difference':'did not reveal a statistically significant difference'}, t(${tests.acc.df}) = ${tests.acc.t}, p = ${tests.acc.p?.toFixed(4)} (Bonferroni-adjusted p = ${Math.min(1,(tests.acc.p||0)*NT).toFixed(4)}), d = ${tests.acc.cohensD}${tests.acc.ci95?`, 95% CI [${fv(tests.acc.ci95.lower)}, ${fv(tests.acc.ci95.upper)}]`:''}` },
                 tests.rt && { head:'Response Time', body:`Mean response time: dark mode M = ${fv(desc.rt?.dark?.mean)} ms (SD = ${fv(desc.rt?.dark?.sd)}), light mode M = ${fv(desc.rt?.light?.mean)} ms (SD = ${fv(desc.rt?.light?.sd)}). t(${tests.rt.df}) = ${tests.rt.t}, p = ${tests.rt.p?.toFixed(4)}, d = ${tests.rt.cohensD}.` },
                 tests.nasa && { head:'Cognitive Workload', body:`NASA-TLX total: dark mode M = ${fv(desc.nasa?.dark?.mean)} (SD = ${fv(desc.nasa?.dark?.sd)}), light mode M = ${fv(desc.nasa?.light?.mean)} (SD = ${fv(desc.nasa?.light?.sd)}). t(${tests.nasa.df}) = ${tests.nasa.t}, p = ${tests.nasa.p?.toFixed(4)}, d = ${tests.nasa.cohensD}.` },
                 sigRows.length>0
-                  ? { head:'Significant Findings', body:`The following variables reached Bonferroni-corrected significance (α = ${ALPHA}): ${sigRows.map(r=>`${r.l} [t(${tests[r.k].df}) = ${tests[r.k].t}, p = ${tests[r.k].p?.toFixed(4)}, d = ${tests[r.k].cohensD}]`).join('; ')}.` }
-                  : { head:'Null Findings', body:`No dependent variable reached Bonferroni-corrected significance (α = ${ALPHA}).${margRows.length>0?` Marginal effects (uncorrected p < .05) were observed for: ${margRows.map(r=>r.l).join(', ')}.`:''} Given the preliminary sample size, effect sizes and confidence intervals are the primary basis for interpretation.` },
+                  ? { head:'Significant Findings', body:`The following variables reached significance at the uncorrected threshold (α = .05): ${sigRows.map(r=>`${r.l} [t(${tests[r.k].df}) = ${tests[r.k].t}, p = ${tests[r.k].p?.toFixed(4)}, d = ${tests[r.k].cohensD}]`).join('; ')}. Of these, ${Object.values(tests).filter(t=>t?.fdrSig).length} also survived FDR correction and ${Object.values(tests).filter(t=>t?.bonferroni).length} survived Bonferroni correction.` }
+                  : { head:'Null Findings', body:`No dependent variable reached the uncorrected significance threshold (α = .05). Effect sizes were uniformly small (|d| < 0.22), and 95% confidence intervals consistently included zero. Given the exploratory sample size, effect sizes and confidence intervals are the primary basis for interpretation, with Bonferroni-corrected values (α = ${ALPHA_BONF_LABEL}) reported as a conservative reference.` },
                 pe && { head:'Practice Effects', body:pe.sig?`A significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, d = ${pe.cohensD}], indicating performance changed across phases independently of theme condition. This should be noted as a limitation.`:`No significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}], indicating performance was stable across phases.` },
               ].filter(Boolean).map(({ head, body }, i) => (
                 <div key={i} style={{ marginBottom:20 }}>
@@ -4118,7 +4146,7 @@ function LimitationsTab({ u }) {
     { title:"Practice Effect",       sev:"Moderate", desc:"Participants in Phase 2 benefit from task familiarity regardless of theme. Counterbalancing mitigates but does not eliminate this. Practice effect analysis is available in the Analysis tab." },
     { title:"Single-Session Design", sev:"Moderate", desc:"Both conditions were tested in one session. Long-term habituation, sustained-use fatigue, and preference stability remain unexamined. A longitudinal design would address these concerns." },
     { title:"Theme Scope",           sev:"Moderate", desc:"Only default system light and dark themes were tested. Custom schemes, high-contrast modes, blue-light filters, and individual display calibration were excluded, limiting generalisability." },
-    { title:"Multiple Comparisons",  sev:"Low",      desc:"11 simultaneous t-tests are conducted with Bonferroni correction (α = 0.0045). This conservative correction may increase Type II error. Effect sizes and confidence intervals supplement p-values." },
+    { title:"Multiple Comparisons",  sev:"Low",      desc:"11 simultaneous t-tests are conducted. Results are interpreted using uncorrected α = .05 as the primary threshold (appropriate for exploratory research), supplemented by FDR correction (Benjamini-Hochberg) and Bonferroni correction (α = 0.0045) as reference. Effect sizes and 95% CIs are the primary evidence throughout." },
     { title:"Normality Assumption",  sev:"Low",      desc:"Paired t-tests assume normally distributed difference scores. The Jarque-Bera test flags violations; non-parametric Wilcoxon alternatives are computed and reported in the Analysis tab." },
     { title:"Self-Report Validity",  sev:"Low",      desc:"NASA-TLX and comfort ratings rely on self-report, which is subject to response bias and demand characteristics. Objective physiological measures would supplement these findings." },
   ];
