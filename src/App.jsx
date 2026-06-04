@@ -3804,7 +3804,7 @@ function AnalysisTab({ u, users }) {
               </tbody>
             </table>
             <div style={{ padding:'10px 16px', fontSize:11, color:u.text3, background:u.fill, borderTop:`1px solid ${u.border}` }}>
-              Δ = Dark − Light · Primary: p (raw) < .05 · FDR: Benjamini-Hochberg · Bonf. p = min(raw p × 11, 1) · Effect size (d) is the primary evidence
+              {'Δ = Dark − Light · Primary: p (raw) < .05 · FDR: Benjamini-Hochberg · Bonf. p = min(raw p × 11, 1) · Effect size (d) is the primary evidence'}
             </div>
           </div>
         )}
