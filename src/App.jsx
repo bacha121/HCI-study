@@ -5241,7 +5241,7 @@ export default function App() {
   };
   const logout = () => { db.setCur(null); setUser(null); setScreen("auth"); setPhase(1); setP1Theme(null); };
 
-  const startExp = () => {
+  const startExp = async () => {
     if (user.completed || (user.experiments || []).length >= 2) return; // one attempt only
 
     const doneExps = (user.experiments || []).filter(e => (e.tasks||[]).length > 0);
@@ -5260,8 +5260,23 @@ export default function App() {
     }
 
     // Fresh start — assign counterbalanced group
-    const countRegistered = db.all().filter(x => x.role !== "admin" && x.orderGroup).length;
-    const group = countRegistered % 2 === 0 ? "DL" : "LD";
+    // Fetch live group counts from Supabase to ensure global balance
+    let dlCount = 0, ldCount = 0;
+    if (supa) {
+      try {
+        const { data } = await supa.from("participants").select("data");
+        if (data) {
+          const allP = data.map(r => r.data).filter(Boolean).filter(x => x.role !== "admin" && x.orderGroup);
+          dlCount = allP.filter(x => x.orderGroup === "DL").length;
+          ldCount = allP.filter(x => x.orderGroup === "LD").length;
+        }
+      } catch {}
+    } else {
+      const allUsers = db.all().filter(x => x.role !== "admin" && x.orderGroup);
+      dlCount = allUsers.filter(x => x.orderGroup === "DL").length;
+      ldCount = allUsers.filter(x => x.orderGroup === "LD").length;
+    }
+    const group = ldCount < dlCount ? "LD" : (dlCount < ldCount ? "DL" : ((dlCount + ldCount) % 2 === 0 ? "DL" : "LD"));
     const first = group === "DL" ? "dark" : "light";
     const upd = { ...user, orderGroup: group };
     setUser(upd); db.save(upd);
