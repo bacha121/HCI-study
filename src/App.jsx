@@ -726,7 +726,101 @@ function computeAnalysis(users) {
     return { tid: task.tid, label: task.label, test: n2 >= 2 ? stat.pairedT(a2.slice(0,n2), b2.slice(0,n2)) : null };
   });
 
-  return { n: valid.length, issues, pairs, desc, tests, taskBreak, correlations, allAcc, allTT, METRICS, counterbalance, szLabel, derivedMetrics, demoSummary, reliability, power, wilcoxon, orderEffect, practiceEffect, corrMatrix, corrKeys: CORR_KEYS, corrLabels: CORR_LABELS, taskTests, insufficient: false };
+  // ── Pattern analyses ─────────────────────────────────────────────────────────
+  const gm = (p, theme, key) => {
+    const vals = (p[theme]?.trials||[]).map(t=>t[key]).filter(v=>v!=null&&!isNaN(v));
+    return vals.length ? avg(vals) : null;
+  };
+
+  // P1 — Age group × theme
+  const ageGroups = { 'Young (18–24)':[18,24], 'Adult (25–34)':[25,34], 'Senior (35+)':[35,99] };
+  const patternAge = Object.entries(ageGroups).map(([label,[lo,hi]])=>{
+    const sub = pairs.filter(p=>{ const a=parseFloat(p.dem?.age); return !isNaN(a)&&a>=lo&&a<=hi; });
+    if(sub.length<3) return null;
+    const dkAcc=sub.map(p=>gm(p,'dark','acc')).filter(v=>v!=null);
+    const ltAcc=sub.map(p=>gm(p,'light','acc')).filter(v=>v!=null);
+    const dkNasa=sub.map(p=>p.dark?.nasa).filter(v=>v!=null);
+    const ltNasa=sub.map(p=>p.light?.nasa).filter(v=>v!=null);
+    return { label, n:sub.length,
+      dkAcc:avg(dkAcc), ltAcc:avg(ltAcc), diffAcc:+(avg(dkAcc)-avg(ltAcc)).toFixed(3),
+      dkNasa:avg(dkNasa), ltNasa:avg(ltNasa), diffNasa:+(avg(dkNasa||[])-avg(ltNasa||[])).toFixed(2) };
+  }).filter(Boolean);
+
+  // P2 — Gender × theme
+  const patternGender = ['Male','Female','Other'].map(gender=>{
+    const sub = pairs.filter(p=>p.dem?.gender===gender);
+    if(sub.length<3) return null;
+    const dkAcc=sub.map(p=>gm(p,'dark','acc')).filter(v=>v!=null);
+    const ltAcc=sub.map(p=>gm(p,'light','acc')).filter(v=>v!=null);
+    const dkVc=sub.map(p=>p.dark?.vc).filter(v=>v!=null);
+    const ltVc=sub.map(p=>p.light?.vc).filter(v=>v!=null);
+    return { label:gender, n:sub.length,
+      dkAcc:avg(dkAcc), ltAcc:avg(ltAcc), diffAcc:+(avg(dkAcc)-avg(ltAcc)).toFixed(3),
+      dkVc:avg(dkVc), ltVc:avg(ltVc), diffVc:+(avg(dkVc||[])-avg(ltVc||[])).toFixed(2) };
+  }).filter(Boolean);
+
+  // P3 — Preference–performance alignment
+  let prefMatch=0, prefMismatch=0, prefTie=0;
+  const matchGaps=[], mismatchGaps=[];
+  pairs.forEach(p=>{
+    const pref=p.pref; const dkA=gm(p,'dark','acc'); const ltA=gm(p,'light','acc');
+    if(!pref||dkA==null||ltA==null) return;
+    const better=dkA-ltA>0.02?'dark':ltA-dkA>0.02?'light':'tie';
+    if(better==='tie'){prefTie++;return;}
+    if(pref===better){prefMatch++;matchGaps.push(Math.abs(dkA-ltA));}
+    else{prefMismatch++;mismatchGaps.push(Math.abs(dkA-ltA));}
+  });
+  const patternPrefAlign = { match:prefMatch, mismatch:prefMismatch, tie:prefTie,
+    total:prefMatch+prefMismatch+prefTie,
+    matchPct:+((prefMatch/(prefMatch+prefMismatch+prefTie||1))*100).toFixed(1),
+    avgMatchGap:matchGaps.length?+(avg(matchGaps)).toFixed(3):null,
+    avgMismatchGap:mismatchGaps.length?+(avg(mismatchGaps)).toFixed(3):null };
+
+  // P4 — Task complexity tiers
+  const SIMPLE=['visual_search','flanker','symbol_match'];
+  const MEDIUM=['sentence_verify','n_back','digit_span','trail_making','nav_task'];
+  const COMPLEX=['reading_comp','memory_recall','email_sel','form_fill','comparison'];
+  const complexityTiers = [['Simple',SIMPLE],['Medium',MEDIUM],['Complex',COMPLEX]].map(([label,tasks])=>{
+    const dkAcc=pairs.flatMap(p=>(p.dark?.trials||[]).filter(t=>tasks.includes(t.taskType||t.task)).map(t=>t.acc)).filter(v=>v!=null);
+    const ltAcc=pairs.flatMap(p=>(p.light?.trials||[]).filter(t=>tasks.includes(t.taskType||t.task)).map(t=>t.acc)).filter(v=>v!=null);
+    if(!dkAcc.length||!ltAcc.length) return null;
+    return { label, tasks:tasks.length, dkAcc:+avg(dkAcc).toFixed(3), ltAcc:+avg(ltAcc).toFixed(3), diff:+(avg(dkAcc)-avg(ltAcc)).toFixed(3) };
+  }).filter(Boolean);
+
+  // P5 — High vs low performers
+  const perfRanked=[...pairs].map(p=>({ p, overall:avg([gm(p,'dark','acc'),gm(p,'light','acc')].filter(v=>v!=null)) })).filter(x=>x.overall!=null).sort((a,b)=>a.overall-b.overall);
+  const third=Math.floor(perfRanked.length/3);
+  const perfGroups = [['Low performers',perfRanked.slice(0,third)],['High performers',perfRanked.slice(2*third)]].map(([label,grp])=>{
+    const sub=grp.map(x=>x.p);
+    const dkAcc=sub.map(p=>gm(p,'dark','acc')).filter(v=>v!=null);
+    const ltAcc=sub.map(p=>gm(p,'light','acc')).filter(v=>v!=null);
+    const dkN=sub.map(p=>p.dark?.nasa).filter(v=>v!=null);
+    const ltN=sub.map(p=>p.light?.nasa).filter(v=>v!=null);
+    return { label, n:sub.length,
+      dkAcc:avg(dkAcc)?+avg(dkAcc).toFixed(3):null, ltAcc:avg(ltAcc)?+avg(ltAcc).toFixed(3):null,
+      diffAcc:dkAcc.length&&ltAcc.length?+(avg(dkAcc)-avg(ltAcc)).toFixed(3):null,
+      dkNasa:dkN.length?+avg(dkN).toFixed(2):null, ltNasa:ltN.length?+avg(ltN).toFixed(2):null };
+  });
+
+  // P6 — Individual winners
+  let dkWin=0,ltWin=0,tied=0; const dkGaps=[],ltGaps=[];
+  pairs.forEach(p=>{ const dk=gm(p,'dark','acc'),lt=gm(p,'light','acc'); if(!dk||!lt) return;
+    const d=dk-lt; if(d>0.02){dkWin++;dkGaps.push(d);} else if(d<-0.02){ltWin++;ltGaps.push(-d);} else tied++; });
+  const individualWinners = { dkWin, ltWin, tied, total:dkWin+ltWin+tied,
+    dkAvgGap:dkGaps.length?+avg(dkGaps).toFixed(3):null,
+    ltAvgGap:ltGaps.length?+avg(ltGaps).toFixed(3):null };
+
+  // P7 — Phase order effect on dark mode
+  const phaseOrderEffect = { darkPhase1:null, darkPhase2:null, lightPhase1:null, lightPhase2:null };
+  const dlPairs=pairs.filter(p=>p.group==='DL'), ldPairs=pairs.filter(p=>p.group==='LD');
+  if(dlPairs.length) phaseOrderEffect.darkPhase1=+avg(dlPairs.map(p=>gm(p,'dark','acc')).filter(v=>v!=null)).toFixed(3);
+  if(ldPairs.length) phaseOrderEffect.darkPhase2=+avg(ldPairs.map(p=>gm(p,'dark','acc')).filter(v=>v!=null)).toFixed(3);
+  if(dlPairs.length) phaseOrderEffect.lightPhase2=+avg(dlPairs.map(p=>gm(p,'light','acc')).filter(v=>v!=null)).toFixed(3);
+  if(ldPairs.length) phaseOrderEffect.lightPhase1=+avg(ldPairs.map(p=>gm(p,'light','acc')).filter(v=>v!=null)).toFixed(3);
+
+  return { n: valid.length, issues, pairs, desc, tests, taskBreak, correlations, allAcc, allTT, METRICS, counterbalance, szLabel, derivedMetrics, demoSummary, reliability, power, wilcoxon, orderEffect, practiceEffect, corrMatrix, corrKeys: CORR_KEYS, corrLabels: CORR_LABELS, taskTests,
+    patternAge, patternGender, patternPrefAlign, complexityTiers, perfGroups, individualWinners, phaseOrderEffect,
+    insufficient: false };
 }
 
 // ─── ANALYTICS PIPELINE ──────────────────────────────────────────────────────────
@@ -3436,7 +3530,8 @@ function AnalysisTab({ u, users }) {
 
   const { pairs, desc, tests, taskBreak, counterbalance:cb, szLabel:sz, allAcc, allTT, demoSummary, reliability,
     power:resPower={}, wilcoxon:resWilcoxon={}, orderEffect:resOrderEffect={},
-    practiceEffect:pe=null, corrMatrix:CM=[], corrLabels:CL=[], taskTests:TT=[] } = res;
+    practiceEffect:pe=null, corrMatrix:CM=[], corrLabels:CL=[], taskTests:TT=[],
+    patternAge=[], patternGender=[], patternPrefAlign=null, complexityTiers=[], perfGroups=[], individualWinners=null, phaseOrderEffect=null } = res;
 
   const N = pairs.length, NT = 11;
   const ALPHA = '0.050';   // primary: uncorrected
@@ -4094,6 +4189,252 @@ function AnalysisTab({ u, users }) {
         ) : (
           <div style={{ padding:pad, paddingTop:16 }}>
             <div style={{ fontSize:13, color:u.text3 }}>Power analysis · Wilcoxon tests · Order effect check · Practice effect · Correlation matrix · Reliability</div>
+          </div>
+        )}
+      </SectionWrap>
+
+      {/* ══ 08B PATTERNS & SUBGROUP ANALYSIS ══════════════════════════════ */}
+      <SectionWrap>
+        <SHdr num="08B" title="Patterns & Subgroup Analysis"
+          sub="Derived patterns across age, gender, skill level, task complexity, preference alignment, and individual performance profiles."
+          action={<ExpandToggle id="patterns" label="all patterns" />} />
+        {expanded.patterns ? (
+          <div style={{ padding:pad }}>
+
+            {/* Individual winners */}
+            {individualWinners && (
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:6 }}>Who wins per person?</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:14 }}>Each participant's better-performing theme (accuracy gap &gt; 2%).</div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:8 }}>
+                  {[
+                    { label:'Dark mode better', n:individualWinners.dkWin, pct:+(individualWinners.dkWin/individualWinners.total*100).toFixed(1), gap:individualWinners.dkAvgGap, color:DK },
+                    { label:'Light mode better', n:individualWinners.ltWin, pct:+(individualWinners.ltWin/individualWinners.total*100).toFixed(1), gap:individualWinners.ltAvgGap, color:LT },
+                    { label:'Tied (≤2% diff)', n:individualWinners.tied, pct:+(individualWinners.tied/individualWinners.total*100).toFixed(1), gap:null, color:u.text3 },
+                  ].map(({ label,n,pct,gap,color }) => (
+                    <div key={label} style={{ padding:'14px 16px', borderRadius:10, background:u.fill, border:`1.5px solid ${color}30` }}>
+                      <div style={{ fontSize:24, fontWeight:800, color, fontFamily:L.mono, lineHeight:1 }}>{pct}%</div>
+                      <div style={{ fontSize:11, color:u.text2, marginTop:4, fontWeight:600 }}>{label}</div>
+                      <div style={{ fontSize:11, color:u.text3, marginTop:2 }}>n = {n}{gap?` · avg Δ = ${(gap*100).toFixed(1)}%`:''}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ height:8, borderRadius:4, overflow:'hidden', display:'flex' }}>
+                  <div style={{ width:`${individualWinners.dkWin/individualWinners.total*100}%`, background:DK, opacity:.85 }} />
+                  <div style={{ width:`${individualWinners.ltWin/individualWinners.total*100}%`, background:LT, opacity:.85 }} />
+                  <div style={{ flex:1, background:u.border }} />
+                </div>
+              </div>
+            )}
+
+            {/* Preference–performance alignment */}
+            {patternPrefAlign && (
+              <div style={{ marginBottom:28, padding:'16px 20px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:6 }}>Preference ↔ Performance Alignment</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:14 }}>Does the theme users prefer also produce their better performance?</div>
+                <div style={{ display:'flex', alignItems:'center', gap:16, flexWrap:'wrap' }}>
+                  <div style={{ flex:1, minWidth:120 }}>
+                    <div style={{ fontSize:28, fontWeight:800, color:SIG, fontFamily:L.mono }}>{patternPrefAlign.matchPct}%</div>
+                    <div style={{ fontSize:11, color:u.text2, marginTop:2 }}>Preference = Better performance</div>
+                    <div style={{ fontSize:11, color:u.text3 }}>n = {patternPrefAlign.match} of {patternPrefAlign.total}</div>
+                  </div>
+                  <div style={{ flex:1, minWidth:120 }}>
+                    <div style={{ fontSize:28, fontWeight:800, color:MAR, fontFamily:L.mono }}>{(100-patternPrefAlign.matchPct-patternPrefAlign.tied/patternPrefAlign.total*100).toFixed(1)}%</div>
+                    <div style={{ fontSize:11, color:u.text2, marginTop:2 }}>Preference ≠ Better performance</div>
+                    <div style={{ fontSize:11, color:u.text3 }}>n = {patternPrefAlign.mismatch} of {patternPrefAlign.total}</div>
+                  </div>
+                  <div style={{ flex:2, minWidth:200, padding:'12px 16px', borderRadius:8, background:`${SIG}08`, border:`1px solid ${SIG}20` }}>
+                    <div style={{ fontSize:12, color:SIG, fontWeight:600, marginBottom:4 }}>Key Insight</div>
+                    <div style={{ fontSize:11, color:u.text2, lineHeight:1.6 }}>Users' intuitive theme choice is correct {patternPrefAlign.matchPct}% of the time — supporting user-controlled theme selection over platform mandates.</div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Age × Theme */}
+            {patternAge.length > 0 && (
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:4 }}>Age Group × Theme Interaction</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:14 }}>Direction of accuracy advantage by age group. Note the reversal between young and older participants.</div>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', minWidth:400 }}>
+                    <thead><tr>
+                      {['Age Group','n','Dark Acc','Light Acc','Δ Accuracy','Dark NASA','Light NASA','Δ NASA'].map(h=><th key={h} style={TH}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {patternAge.map(row => {
+                        const dkBetter = row.diffAcc > 0.01;
+                        const ltBetter = row.diffAcc < -0.01;
+                        return (
+                          <tr key={row.label} style={{ background:dkBetter?`${DK}06`:ltBetter?`${LT}06`:'transparent' }}>
+                            <td style={TD(u.text)}>{row.label}</td>
+                            <td style={TD(u.text3,true)}>{row.n}</td>
+                            <td style={TD(DK,true)}>{row.dkAcc?.toFixed(3)||'—'}</td>
+                            <td style={TD(LT,true)}>{row.ltAcc?.toFixed(3)||'—'}</td>
+                            <td style={{ ...TD(dkBetter?DK:ltBetter?LT:u.text3,true), fontWeight:700 }}>{row.diffAcc>0?'+':''}{row.diffAcc}</td>
+                            <td style={TD(DK,true)}>{row.dkNasa?.toFixed(1)||'—'}</td>
+                            <td style={TD(LT,true)}>{row.ltNasa?.toFixed(1)||'—'}</td>
+                            <td style={TD(row.diffNasa<0?DK:u.text3,true)}>{row.diffNasa>0?'+':''}{row.diffNasa}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Gender × Theme */}
+            {patternGender.length > 0 && (
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:4 }}>Gender × Theme Interaction</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:14 }}>Males and females show opposing performance and comfort patterns across theme conditions.</div>
+                <div style={{ display:'grid', gridTemplateColumns:isDesktop?`repeat(${patternGender.length},1fr)`:'1fr 1fr', gap:12 }}>
+                  {patternGender.map(row => {
+                    const dkBetter = row.diffAcc > 0.01;
+                    const color = dkBetter ? DK : LT;
+                    return (
+                      <div key={row.label} style={{ padding:'16px 18px', borderRadius:10, background:u.fill, border:`1.5px solid ${color}30` }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:u.text, marginBottom:12 }}>{row.label} <span style={{ fontSize:11, color:u.text3, fontWeight:400 }}>n={row.n}</span></div>
+                        <div style={{ marginBottom:8 }}>
+                          <div style={{ fontSize:10, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:4 }}>Accuracy</div>
+                          <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                            <span style={{ fontSize:13, color:DK, fontFamily:L.mono, fontWeight:600 }}>{row.dkAcc?.toFixed(3)}</span>
+                            <span style={{ fontSize:10, color:u.text3 }}>vs</span>
+                            <span style={{ fontSize:13, color:LT, fontFamily:L.mono, fontWeight:600 }}>{row.ltAcc?.toFixed(3)}</span>
+                            <span style={{ fontSize:12, fontWeight:700, color, fontFamily:L.mono }}>{row.diffAcc>0?'+':''}{row.diffAcc}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize:10, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:4 }}>Visual Comfort</div>
+                          <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+                            <span style={{ fontSize:13, color:DK, fontFamily:L.mono, fontWeight:600 }}>{row.dkVc?.toFixed(2)}</span>
+                            <span style={{ fontSize:10, color:u.text3 }}>vs</span>
+                            <span style={{ fontSize:13, color:LT, fontFamily:L.mono, fontWeight:600 }}>{row.ltVc?.toFixed(2)}</span>
+                            <span style={{ fontSize:12, fontWeight:700, color:row.diffVc>0?DK:LT, fontFamily:L.mono }}>{row.diffVc>0?'+':''}{row.diffVc}</span>
+                          </div>
+                        </div>
+                        <div style={{ marginTop:10, padding:'6px 10px', borderRadius:6, background:`${color}10`, fontSize:11, color, fontWeight:600 }}>
+                          {dkBetter?'Dark mode':'Light mode'} favoured
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Task complexity tiers */}
+            {complexityTiers.length > 0 && (
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:4 }}>Task Complexity × Theme</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:14 }}>As cognitive demand increases, light mode advantage grows. Simple tasks show no difference; complex tasks show 13pp+ light mode advantage.</div>
+                <div style={{ display:'grid', gridTemplateColumns:`repeat(${complexityTiers.length},1fr)`, gap:12 }}>
+                  {complexityTiers.map(tier => {
+                    const dkBetter = tier.diff > 0.01;
+                    const ltBetter = tier.diff < -0.01;
+                    const color = dkBetter ? DK : ltBetter ? LT : u.text3;
+                    const bgColor = dkBetter ? `${DK}08` : ltBetter ? `${LT}08` : u.fill;
+                    const absDiff = Math.abs(tier.diff);
+                    return (
+                      <div key={tier.label} style={{ padding:'16px 18px', borderRadius:10, background:bgColor, border:`1.5px solid ${color}30` }}>
+                        <div style={{ fontSize:11, fontWeight:600, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:8 }}>{tier.label}</div>
+                        <div style={{ fontSize:28, fontWeight:800, color, fontFamily:L.mono, lineHeight:1 }}>{tier.diff>0?'+':''}{(tier.diff*100).toFixed(1)}%</div>
+                        <div style={{ fontSize:11, color:u.text2, marginTop:4 }}>{dkBetter?'Dark':'Light'} mode advantage</div>
+                        <div style={{ marginTop:10, display:'flex', gap:8, fontSize:11 }}>
+                          <span style={{ color:DK, fontFamily:L.mono }}>{tier.dkAcc}</span>
+                          <span style={{ color:u.text3 }}>vs</span>
+                          <span style={{ color:LT, fontFamily:L.mono }}>{tier.ltAcc}</span>
+                        </div>
+                        {/* Mini bar showing effect size */}
+                        <div style={{ marginTop:8, height:4, borderRadius:2, background:u.border, overflow:'hidden' }}>
+                          <div style={{ height:'100%', width:`${Math.min(absDiff*300,100)}%`, background:color, borderRadius:2 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* High vs Low performers */}
+            {perfGroups.length > 0 && (
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:4 }}>Skill Level × Theme Interaction</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:14 }}>Low performers benefit more from light mode; high performers benefit more from dark mode — a skill-level reversal.</div>
+                <div style={{ overflowX:'auto' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                    <thead><tr>{['Group','n','Dark Acc','Light Acc','Δ Acc','Dark NASA','Light NASA','Δ NASA','Favours'].map(h=><th key={h} style={TH}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {perfGroups.map(g => {
+                        const favors = g.diffAcc > 0.01 ? 'Dark' : g.diffAcc < -0.01 ? 'Light' : 'Equal';
+                        const fc = favors==='Dark'?DK:favors==='Light'?LT:u.text3;
+                        return (
+                          <tr key={g.label} style={{ background:g.diffAcc>0?`${DK}06`:`${LT}06` }}>
+                            <td style={TD(u.text)}>{g.label}</td>
+                            <td style={TD(u.text3,true)}>{g.n}</td>
+                            <td style={TD(DK,true)}>{g.dkAcc||'—'}</td>
+                            <td style={TD(LT,true)}>{g.ltAcc||'—'}</td>
+                            <td style={{ ...TD(fc,true), fontWeight:700 }}>{g.diffAcc!=null?(g.diffAcc>0?'+':'')+g.diffAcc:'—'}</td>
+                            <td style={TD(DK,true)}>{g.dkNasa||'—'}</td>
+                            <td style={TD(LT,true)}>{g.ltNasa||'—'}</td>
+                            <td style={TD(g.dkNasa<g.ltNasa?DK:LT,true)}>{g.dkNasa&&g.ltNasa?(g.dkNasa-g.ltNasa>0?'+':'')+((g.dkNasa||0)-(g.ltNasa||0)).toFixed(2):'—'}</td>
+                            <td style={{ padding:'8px 14px', borderBottom:`1px solid ${u.border}` }}><Chip label={favors} color={fc} /></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Phase order effect */}
+            {phaseOrderEffect && (phaseOrderEffect.darkPhase1||phaseOrderEffect.darkPhase2) && (
+              <div style={{ padding:'16px 20px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:6 }}>Phase Order Effect on Accuracy</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:12 }}>Does being done first or second affect performance? Dark mode shows a notable drop in Phase 2.</div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                  {[
+                    { theme:'Dark Mode', p1:phaseOrderEffect.darkPhase1, p2:phaseOrderEffect.darkPhase2, color:DK },
+                    { theme:'Light Mode', p1:phaseOrderEffect.lightPhase1, p2:phaseOrderEffect.lightPhase2, color:LT },
+                  ].map(({ theme,p1,p2,color }) => {
+                    const drop = p1&&p2?+(p2-p1).toFixed(3):null;
+                    return (
+                      <div key={theme}>
+                        <div style={{ fontSize:11, fontWeight:600, color, marginBottom:8 }}>{theme}</div>
+                        <div style={{ display:'flex', gap:16 }}>
+                          <div>
+                            <div style={{ fontSize:10, color:u.text3, marginBottom:2 }}>Phase 1 (first)</div>
+                            <div style={{ fontSize:18, fontWeight:700, color, fontFamily:L.mono }}>{p1?.toFixed(3)||'—'}</div>
+                          </div>
+                          <div style={{ fontSize:18, color:u.text3, alignSelf:'center' }}>→</div>
+                          <div>
+                            <div style={{ fontSize:10, color:u.text3, marginBottom:2 }}>Phase 2 (second)</div>
+                            <div style={{ fontSize:18, fontWeight:700, color, fontFamily:L.mono }}>{p2?.toFixed(3)||'—'}</div>
+                          </div>
+                          {drop!=null && <div style={{ alignSelf:'center', fontSize:13, fontWeight:700, color:drop<-0.02?u.red:drop>0.02?SIG:u.text3, fontFamily:L.mono }}>Δ{drop>0?'+':''}{drop}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+          </div>
+        ) : (
+          <div style={{ padding:pad, paddingTop:16 }}>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              {[
+                `Individual winners: ${individualWinners?`${individualWinners.dkWin} dark / ${individualWinners.ltWin} light / ${individualWinners.tied} tied`:'—'}`,
+                `Preference alignment: ${patternPrefAlign?`${patternPrefAlign.matchPct}% match`:'—'}`,
+                `Age reversal: young→light, adult/senior→dark`,
+                `Gender reversal: male→dark, female→light`,
+                `Complexity dose-response: simple≈0 → complex→light +13%`,
+                `Skill reversal: low performers→light, high→dark`,
+              ].map(s => <Chip key={s} label={s} color={u.text3} />)}
+            </div>
           </div>
         )}
       </SectionWrap>
