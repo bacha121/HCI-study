@@ -812,11 +812,11 @@ function computeAnalysis(users) {
 
   // P7 — Phase order effect on dark mode
   const phaseOrderEffect = { darkPhase1:null, darkPhase2:null, lightPhase1:null, lightPhase2:null };
-  const dlPairs=pairs.filter(p=>p.group==='DL'), ldPairs=pairs.filter(p=>p.group==='LD');
-  if(dlPairs.length) phaseOrderEffect.darkPhase1=+avg(dlPairs.map(p=>gm(p,'dark','acc')).filter(v=>v!=null)).toFixed(3);
-  if(ldPairs.length) phaseOrderEffect.darkPhase2=+avg(ldPairs.map(p=>gm(p,'dark','acc')).filter(v=>v!=null)).toFixed(3);
-  if(dlPairs.length) phaseOrderEffect.lightPhase2=+avg(dlPairs.map(p=>gm(p,'light','acc')).filter(v=>v!=null)).toFixed(3);
-  if(ldPairs.length) phaseOrderEffect.lightPhase1=+avg(ldPairs.map(p=>gm(p,'light','acc')).filter(v=>v!=null)).toFixed(3);
+  const dlPairs2=pairs.filter(p=>p.group==='DL'), ldPairs2=pairs.filter(p=>p.group==='LD');
+  if(dlPairs2.length) phaseOrderEffect.darkPhase1=+avg(dlPairs2.map(p=>gm(p,'dark','acc')).filter(v=>v!=null)).toFixed(3);
+  if(ldPairs2.length) phaseOrderEffect.darkPhase2=+avg(ldPairs2.map(p=>gm(p,'dark','acc')).filter(v=>v!=null)).toFixed(3);
+  if(dlPairs2.length) phaseOrderEffect.lightPhase2=+avg(dlPairs2.map(p=>gm(p,'light','acc')).filter(v=>v!=null)).toFixed(3);
+  if(ldPairs2.length) phaseOrderEffect.lightPhase1=+avg(ldPairs2.map(p=>gm(p,'light','acc')).filter(v=>v!=null)).toFixed(3);
 
   return { n: valid.length, issues, pairs, desc, tests, taskBreak, correlations, allAcc, allTT, METRICS, counterbalance, szLabel, derivedMetrics, demoSummary, reliability, power, wilcoxon, orderEffect, practiceEffect, corrMatrix, corrKeys: CORR_KEYS, corrLabels: CORR_LABELS, taskTests,
     patternAge, patternGender, patternPrefAlign, complexityTiers, perfGroups, individualWinners, phaseOrderEffect,
