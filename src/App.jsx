@@ -3221,7 +3221,7 @@ function WorkloadTab({ user, u }) {
   );
 }
 
-function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
+function Dashboard({ user, u, onStart, startingExp, onProfile, onTutorial, onReport }) {
   const stats = useMemo(() => computeStats(user), [user]);
   const recent = (user.experiments || []).slice(-4).reverse();
   const isCompleted = !!(user.completed || (user.experiments || []).length >= 2);
@@ -3273,7 +3273,7 @@ function Dashboard({ user, u, onStart, onProfile, onTutorial, onReport }) {
                     </div>
                     <div style={{ display: "flex", gap: L.spSm, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
                       {!isResume && <Btn u={u} v="ghost" onClick={onTutorial}>📖 Tutorial</Btn>}
-                      <Btn u={u} v="grad" onClick={onStart}>{isResume ? `Continue Phase 2 (${pendTheme}) →` : "Begin Experiment →"}</Btn>
+                      <Btn u={u} v="grad" onClick={onStart} disabled={onStart.loading}>{isResume ? `Continue Phase 2 (${pendTheme}) →` : startingExp ? "Assigning group…" : "Begin Experiment →"}</Btn>
                     </div>
                   </>
                 );
@@ -4620,9 +4620,6 @@ function generateInsights(stats, user, nasa, dkC, ltC) {
 
   // ── Workload insight ─────────────────────────────────────────────────────────
   let workloadInsight = "";
-  const nasaDkScore = dkC != null ? (nasa?.totalScore ?? null) : null;
-  const _ndk = typeof dkNasaScore !== 'undefined' ? dkNasaScore : (nasa?.totalScore ?? null);
-  const _nlt = typeof ltNasaScore !== 'undefined' ? ltNasaScore : null;
   const nasaScore = nasa?.totalScore;
   if (nasaScore != null) {
     if (nasaScore < 7) workloadInsight = `Your overall workload score of ${nasaScore.toFixed(1)} out of 20 indicates a low cognitive load experience — the tasks felt manageable and you did not experience significant mental fatigue. This is a very positive result.`;
@@ -4996,15 +4993,19 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
   const [copied, setCopied] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
-  // Pull latest participant data from Supabase on first load
+  // Pull latest participant data from Supabase on first load + every 30s
   useEffect(() => {
     if (!supa) return;
-    setSyncing(true);
-    db.syncFromCloud().then(n => {
-      // Always update from local (which was just synced from cloud)
-      setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
-      setSyncing(false);
-    });
+    const sync = () => {
+      setSyncing(true);
+      db.syncFromCloud().then(() => {
+        setUsers(db.all().filter(x => x.role !== "admin").sort((a,b) => a.name.localeCompare(b.name)));
+        setSyncing(false);
+      });
+    };
+    sync();
+    const interval = setInterval(sync, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   const refresh = async () => {
@@ -5610,7 +5611,10 @@ export default function App() {
   };
   const logout = () => { db.setCur(null); setUser(null); setScreen("auth"); setPhase(1); setP1Theme(null); };
 
+  const [startingExp, setStartingExp] = useState(false);
+
   const startExp = async () => {
+    if (startingExp) return;
     if (user.completed || (user.experiments || []).length >= 2) return; // one attempt only
 
     const doneExps = (user.experiments || []).filter(e => (e.tasks||[]).length > 0);
@@ -5629,6 +5633,8 @@ export default function App() {
     }
 
     // Fresh start — assign counterbalanced group
+    setStartingExp(true);
+    try {
     // Fetch live group counts from Supabase to ensure global balance
     let dlCount = 0, ldCount = 0;
     if (supa) {
@@ -5652,6 +5658,8 @@ export default function App() {
     setP1Theme(first); setTaskOrder(shuf([...CFG.tasks]));
     setPhase(1); setTaskIdx(0); setTrialIdx(0); setTrialRes([]); setSessTasks([]);
     setScreen("instructions");
+    } catch(e) { console.error('startExp error', e); }
+    finally { setStartingExp(false); }
   };
 
   const saveDem = dem => { const upd = { ...user, dem }; setUser(upd); db.save(upd); setScreen("app"); };
@@ -5711,14 +5719,16 @@ export default function App() {
     const sessRec = { ...(pendingSess || {}), nasaTLX: tlxFull };
     if (phase === 1) {
       // Phase 1 done — save session with comfort + NASA, then break
-      const upd = { ...user, experiments: [...(user.experiments || []), sessRec] };
+      const latest = db.get(user.id) || user;
+      const upd = { ...latest, experiments: [...(latest.experiments || []), sessRec] };
       setUser(upd); db.save(upd);
       setSessTasks([]); setPhase(2); setTaskIdx(0); setTrialIdx(0); setTrialRes([]);
       setPendingSess(null);
       setScreen("break");
     } else {
-      // Phase 2 done — save session, go to preference then debrief
-      const upd = { ...user, experiments: [...(user.experiments || []), sessRec], completed: true };
+      // Phase 2 done — read latest from db to ensure Phase 1 session is included
+      const latest = db.get(user.id) || user;
+      const upd = { ...latest, experiments: [...(latest.experiments || []), sessRec], completed: true };
       setUser(upd); db.save(upd);
       setPendingSess(null);
       setScreen("preference");
@@ -5777,7 +5787,7 @@ export default function App() {
   if (screen === "app") return (
     <><style>{GCSS}</style>
       <AppShell user={user} u={u} uiDark={uiDark} onToggleTheme={toggleTheme} tab={uiTab} setTab={setUiTab} onLogout={logout}>
-        {uiTab === "dashboard" && <Dashboard user={user} u={u} onStart={startExp} onProfile={() => setUiTab("profile")} onTutorial={() => setScreen("tutorial")} onReport={() => setUiTab("report")} />}
+        {uiTab === "dashboard" && <Dashboard user={user} u={u} onStart={startExp} startingExp={startingExp} onProfile={() => setUiTab("profile")} onTutorial={() => setScreen("tutorial")} onReport={() => setUiTab("report")} />}
         {uiTab === "profile"   && <ProfilePage user={user} u={u} onSave={upd => setUser(upd)} />}
         {uiTab === "patterns"  && <PatternsTab user={user} u={u} />}
         {uiTab === "comfort"   && <VisualComfortTab user={user} u={u} />}
