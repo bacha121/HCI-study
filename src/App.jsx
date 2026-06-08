@@ -5334,34 +5334,43 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 {(() => {
                   const tasks = tStats.filter(t=>t.n>0);
                   if (!tasks.length) return <div style={{ color:u.text3, fontSize:13, textAlign:"center", padding:20 }}>No trial data yet</div>;
-                  const BW=20, GAP=6, GRP=16, H=100, LBL=60;
+                  const BW=20, GAP=6, GRP=16, H=110, LBL=60, TPAD=20;
                   const W = tasks.length*(BW*2+GAP+GRP)+LBL;
                   return (
-                    <svg width="100%" viewBox={`0 0 ${W} ${H+28}`} style={{ minWidth:Math.min(W,500), display:"block" }}>
+                    <svg width="100%" viewBox={`0 0 ${W} ${H+TPAD+32}`} style={{ minWidth:Math.min(W,500), display:"block", overflow:"visible" }}>
+                      {/* Grid lines */}
                       {[0,.25,.5,.75,1].map(v=>(
                         <g key={v}>
-                          <line x1={LBL-8} y1={H-v*H} x2={W} y2={H-v*H} stroke={u.border} strokeWidth={.5} />
-                          <text x={LBL-10} y={H-v*H+3} fontSize={8} fill={u.text3} textAnchor="end" fontFamily={L.mono}>{(v*100).toFixed(0)}%</text>
+                          <line x1={LBL-8} y1={TPAD+H-v*H} x2={W} y2={TPAD+H-v*H} stroke={u.border} strokeWidth={.5} />
+                          <text x={LBL-10} y={TPAD+H-v*H+3} fontSize={8} fill={u.text3} textAnchor="end" fontFamily={L.mono}>{(v*100).toFixed(0)}%</text>
                         </g>
                       ))}
+                      {/* Bars */}
                       {tasks.map((task,ti)=>{
                         const x=LBL+ti*(BW*2+GAP+GRP);
-                        const dh=(task.dk?.acc||0)*H, lh=(task.lt?.acc||0)*H;
+                        const dh=Math.min((task.dk?.acc||0)*H, H);
+                        const lh=Math.min((task.lt?.acc||0)*H, H);
                         const label=task.l.split(" ")[0];
+                        const dkPct=task.dk?.acc!=null?Math.round(task.dk.acc*100):null;
+                        const ltPct=task.lt?.acc!=null?Math.round(task.lt.acc*100):null;
                         return (
                           <g key={task.tid}>
-                            <rect x={x}       y={H-dh} width={BW} height={dh} rx={3} fill={DK} opacity={.85} />
-                            <rect x={x+BW+GAP} y={H-lh} width={BW} height={lh} rx={3} fill={LT} opacity={.85} />
-                            <text x={x+BW} y={H+13} fontSize={8} fill={u.text2} textAnchor="middle" fontFamily={L.font}>{label}</text>
-                            {/* Diff indicator */}
-                            {Math.abs(dh-lh)>5 && <line x1={x+BW/2} y1={Math.min(H-dh,H-lh)-2} x2={x+BW+GAP+BW/2} y2={Math.min(H-dh,H-lh)-2} stroke={dh>lh?DK:LT} strokeWidth={1.5} strokeDasharray="3,2" opacity={.6} />}
+                            {/* Dark bar */}
+                            <rect x={x} y={TPAD+H-dh} width={BW} height={dh} rx={3} fill={DK} opacity={.85} />
+                            {dkPct!=null && <text x={x+BW/2} y={TPAD+H-dh-4} fontSize={7.5} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{dkPct}</text>}
+                            {/* Light bar */}
+                            <rect x={x+BW+GAP} y={TPAD+H-lh} width={BW} height={lh} rx={3} fill={LT} opacity={.85} />
+                            {ltPct!=null && <text x={x+BW+GAP+BW/2} y={TPAD+H-lh-4} fontSize={7.5} fill={u.text3} textAnchor="middle" fontFamily={L.mono}>{ltPct}</text>}
+                            {/* Task label */}
+                            <text x={x+BW} y={TPAD+H+14} fontSize={8} fill={u.text2} textAnchor="middle" fontFamily={L.font}>{label}</text>
                           </g>
                         );
                       })}
-                      <rect x={LBL} y={H+18} width={BW} height={5} rx={1} fill={DK} />
-                      <text x={LBL+BW+4} y={H+23} fontSize={9} fill={DK} fontFamily={L.font}>Dark</text>
-                      <rect x={LBL+50} y={H+18} width={BW} height={5} rx={1} fill={LT} />
-                      <text x={LBL+50+BW+4} y={H+23} fontSize={9} fill={LT} fontFamily={L.font}>Light</text>
+                      {/* Legend */}
+                      <rect x={LBL} y={TPAD+H+22} width={BW} height={5} rx={1} fill={DK} />
+                      <text x={LBL+BW+4} y={TPAD+H+27} fontSize={9} fill={DK} fontFamily={L.font} fontWeight="600">Dark</text>
+                      <rect x={LBL+52} y={TPAD+H+22} width={BW} height={5} rx={1} fill={LT} />
+                      <text x={LBL+52+BW+4} y={TPAD+H+27} fontSize={9} fill={LT} fontFamily={L.font} fontWeight="600">Light</text>
                     </svg>
                   );
                 })()}
