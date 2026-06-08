@@ -3569,19 +3569,19 @@ function AnalysisTab({ u, users }) {
   );
 
   const SectionWrap = ({ children, tight }) => (
-    <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:16, overflow:'hidden', marginBottom:tight?16:28 }}>
+    <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:14, overflow:'hidden', marginBottom:tight?16:20 }}>
       {children}
     </div>
   );
 
   const SHdr = ({ num, title, sub, action }) => (
-    <div style={{ padding:`24px ${isTablet?32:20}px 20px`, borderBottom:`1px solid ${u.border}` }}>
+    <div style={{ padding:`20px ${isTablet?28:18}px 18px`, borderBottom:`1px solid ${u.border}`, background:u.fill }}>
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:12 }}>
-        <div style={{ display:'flex', alignItems:'baseline', gap:12 }}>
-          <span style={{ fontSize:10, fontWeight:700, color:u.text3, letterSpacing:2, fontFamily:L.mono }}>{num}</span>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <span style={{ fontSize:11, fontWeight:800, color:u.accent, letterSpacing:1, fontFamily:L.mono, background:`${u.accent}12`, padding:'3px 8px', borderRadius:6 }}>{num}</span>
           <div>
-            <div style={{ fontSize:isTablet?18:16, fontWeight:700, color:u.text, letterSpacing:-0.3 }}>{title}</div>
-            {sub && <div style={{ fontSize:12, color:u.text3, marginTop:3, lineHeight:1.5 }}>{sub}</div>}
+            <div style={{ fontSize:isTablet?17:15, fontWeight:700, color:u.text, letterSpacing:-0.3 }}>{title}</div>
+            {sub && <div style={{ fontSize:12, color:u.text2, marginTop:3, lineHeight:1.5 }}>{sub}</div>}
           </div>
         </div>
         {action}
@@ -3590,22 +3590,25 @@ function AnalysisTab({ u, users }) {
   );
 
   const ExpandToggle = ({ id, label }) => (
-    <button onClick={() => toggle(id)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', borderRadius:8, border:`1px solid ${u.border}`, background:'transparent', color:u.text2, fontSize:12, fontWeight:500, fontFamily:L.font, cursor:'pointer', whiteSpace:'nowrap' }}>
-      <span style={{ fontSize:10, color:u.accent }}>{expanded[id]?'▾':'▸'}</span>
+    <button onClick={() => toggle(id)} style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 14px', borderRadius:8, border:`1px solid ${u.accent}40`, background:`${u.accent}08`, color:u.accent, fontSize:12, fontWeight:600, fontFamily:L.font, cursor:'pointer', whiteSpace:'nowrap' }}>
+      <span style={{ fontSize:11 }}>{expanded[id]?'▾':'▸'}</span>
       {expanded[id]?'Collapse':'Expand'} {label}
     </button>
   );
 
   const DotLegend = () => (
-    <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
-      {[[DK,'Dark mode'],[LT,'Light mode'],[SIG,'Significant'],[MAR,'Marginal']].map(([c,l])=>(
-        <div key={l} style={{ display:'flex', alignItems:'center', gap:5 }}>
-          <div style={{ width:8, height:8, borderRadius:'50%', background:c, flexShrink:0 }} />
-          <span style={{ fontSize:11, color:u.text3 }}>{l}</span>
+    <div style={{ display:'flex', gap:20, flexWrap:'wrap' }}>
+      {[[DK,'Dark mode'],[LT,'Light mode'],[SIG,'Significant (p<.05)'],[MAR,'Marginal']].map(([c,l])=>(
+        <div key={l} style={{ display:'flex', alignItems:'center', gap:6 }}>
+          <div style={{ width:10, height:10, borderRadius:'50%', background:c, flexShrink:0 }} />
+          <span style={{ fontSize:12, color:u.text2, fontWeight:500 }}>{l}</span>
         </div>
       ))}
     </div>
   );
+
+  const TH = { padding:'10px 14px', fontSize:11, fontWeight:700, color:u.text, background:u.fill, borderBottom:`2px solid ${u.border}`, textAlign:'left', whiteSpace:'nowrap', letterSpacing:.3 };
+  const TD = (c,mono) => ({ padding:'9px 14px', fontSize:12, color:c||u.text, borderBottom:`1px solid ${u.border}`, whiteSpace:'nowrap', fontFamily:mono?L.mono:L.font });
 
   // ── Dumbbell chart ────────────────────────────────────────────────────────────
   const Dumbbell = ({ rows, title }) => {
@@ -3723,8 +3726,6 @@ function AnalysisTab({ u, users }) {
 
   // ── Helpers ───────────────────────────────────────────────────────────────────
   const pad = isTablet?'28px 32px':'20px 18px';
-  const TH = { padding:'9px 14px', fontSize:11, fontWeight:600, color:u.text3, background:u.fill, borderBottom:`1.5px solid ${u.border}`, textAlign:'left', whiteSpace:'nowrap', letterSpacing:.3 };
-  const TD = (c,mono) => ({ padding:'8px 14px', fontSize:12, color:c||u.text, borderBottom:`1px solid ${u.border}`, whiteSpace:'nowrap', fontFamily:mono?L.mono:L.font });
 
   // ── Finding cards ─────────────────────────────────────────────────────────────
   const topFindings = () => {
@@ -3779,26 +3780,26 @@ function AnalysisTab({ u, users }) {
           {/* Sample + counterbalance status */}
           <div style={{ display:'grid', gridTemplateColumns:isTablet?'1fr 1fr 1fr':'1fr', gap:12, marginBottom:28 }}>
             <div style={{ padding:'14px 18px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
-              <div style={{ fontSize:10, fontWeight:600, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Sample Adequacy</div>
+              <div style={{ fontSize:11, fontWeight:700, color:u.text2, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Sample Adequacy</div>
               <div style={{ fontSize:15, fontWeight:700, color:u[sz.c]||u.text }}>{sz.l}</div>
-              <div style={{ fontSize:11, color:u.text3, marginTop:3 }}>{sz.note||'Effect sizes are more reliable than p-values at this n.'}</div>
+              <div style={{ fontSize:12, color:u.text2, marginTop:3 }}>{sz.note||'Effect sizes are more reliable than p-values at this n.'}</div>
             </div>
             <div style={{ padding:'14px 18px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
-              <div style={{ fontSize:10, fontWeight:600, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Counterbalance</div>
+              <div style={{ fontSize:11, fontWeight:700, color:u.text2, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Counterbalance</div>
               <div style={{ fontSize:15, fontWeight:700, color:cb.balanced?SIG:MAR }}>{cb.balanced?'Balanced':'Imbalanced'}</div>
-              <div style={{ fontSize:11, color:u.text3, marginTop:3 }}>DL group: {cb.dl} · LD group: {cb.ld}</div>
+              <div style={{ fontSize:12, color:u.text2, marginTop:3 }}>DL group: {cb.dl} · LD group: {cb.ld}</div>
             </div>
             {demoSummary && <div style={{ padding:'14px 18px', borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
-              <div style={{ fontSize:10, fontWeight:600, color:u.text3, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Demographics</div>
+              <div style={{ fontSize:11, fontWeight:700, color:u.text2, textTransform:'uppercase', letterSpacing:.8, marginBottom:6 }}>Demographics</div>
               <div style={{ fontSize:15, fontWeight:700, color:u.text }}>n = {demoSummary.n}</div>
-              <div style={{ fontSize:11, color:u.text3, marginTop:3 }}>{demoSummary.age?`Age ${demoSummary.age.mean}±${demoSummary.age.sd}`:'—'}</div>
+              <div style={{ fontSize:12, color:u.text2, marginTop:3 }}>{demoSummary.age?`Age ${demoSummary.age.mean}±${demoSummary.age.sd}`:'—'}</div>
             </div>}
           </div>
 
           {/* Findings highlight */}
           {findings.length>0 && <>
-            <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1.2, textTransform:'uppercase', marginBottom:12 }}>
-              {sigRows.length?'Significant Findings':'Largest Observed Trends'}
+            <div style={{ fontSize:12, fontWeight:700, color:u.text2, letterSpacing:1, textTransform:'uppercase', marginBottom:12 }}>
+              {sigRows.length?'Significant Findings':'Largest Observed Trends (no significant effects detected)'}
             </div>
             <div style={{ display:'grid', gridTemplateColumns:isTablet?`repeat(${Math.min(findings.length,2)},1fr)`:'1fr', gap:10 }}>
               {findings.map(({ metric,better,betterColor,d,sig,strength,trend }) => (
@@ -3908,16 +3909,17 @@ function AnalysisTab({ u, users }) {
           </div>
         )}
         {!expanded.stats && (
-          <div style={{ padding:pad, paddingTop:16 }}>
-            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-              {sigRows.length===0&&margRows.length===0
-                ? <span style={{ fontSize:13, color:u.text3 }}>No tests reached significance at α = .05. Effect sizes and CIs are the primary evidence — expand to view.</span>
-                : <>
-                    {sigRows.map(r=><Chip key={r.k} label={`${r.l}: d=${tests[r.k].cohensD}`} color={SIG} />)}
-                    {margRows.map(r=><Chip key={r.k} label={`${r.l}: p=${tests[r.k].p?.toFixed(3)}`} color={MAR} />)}
-                  </>
-              }
-            </div>
+          <div style={{ padding:`16px ${isTablet?28:18}px` }}>
+            {sigRows.length===0&&Object.values(tests).filter(t=>t?.fdrSig).length===0
+              ? <div style={{ fontSize:13, color:u.text2, padding:'10px 14px', borderRadius:8, background:u.fill, border:`1px solid ${u.border}` }}>
+                  No tests reached significance at α = .05. Effect sizes (Cohen's d) are the primary basis for interpretation.
+                  <span style={{ display:'block', fontSize:11, color:u.text2, marginTop:4 }}>Largest effect: {TEST_ROWS.reduce((mx,r)=>tests[r.k]?.cohensD!=null&&Math.abs(tests[r.k].cohensD)>Math.abs(mx.d||0)?{l:r.l,d:tests[r.k].cohensD}:mx,{}).l} (d={TEST_ROWS.reduce((mx,r)=>tests[r.k]?.cohensD!=null&&Math.abs(tests[r.k].cohensD)>Math.abs(mx||0)?tests[r.k].cohensD:mx,0)})</span>
+                </div>
+              : <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {sigRows.map(r=><Chip key={r.k} label={`★ ${r.l}: d=${tests[r.k].cohensD}`} color={SIG} />)}
+                  {Object.values(tests).filter(t=>t?.fdrSig&&!t?.sig).map((t,i)=><Chip key={i} label={`FDR: d=${t.cohensD}`} color={u.teal} />)}
+                </div>
+            }
           </div>
         )}
       </SectionWrap>
@@ -4003,7 +4005,7 @@ function AnalysisTab({ u, users }) {
           <div style={{ display:'grid', gridTemplateColumns:isDesktop?'1fr 1fr':'1fr', gap:32 }}>
             {/* NASA bars */}
             <div>
-              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1.2, textTransform:'uppercase', marginBottom:16 }}>NASA-TLX Subscales (0–20)</div>
+              <div style={{ fontSize:12, fontWeight:700, color:u.text2, letterSpacing:1, textTransform:'uppercase', marginBottom:16 }}>NASA-TLX Subscales (0–20)</div>
               {[{k:'nasaMD',l:'Mental Demand'},{k:'nasaEF',l:'Effort'},{k:'nasFR',l:'Frustration'},{k:'nasa',l:'Total Score'}].map(({k,l})=>{
                 const d=desc[k]; if (!d?.dark?.n&&!d?.light?.n) return null;
                 const dm=d?.dark?.mean||0, lm=d?.light?.mean||0, mx=20;
@@ -4038,7 +4040,7 @@ function AnalysisTab({ u, users }) {
             </div>
             {/* Comfort ratings */}
             <div>
-              <div style={{ fontSize:11, fontWeight:600, color:u.text3, letterSpacing:1.2, textTransform:'uppercase', marginBottom:16 }}>Comfort Ratings (1–7)</div>
+              <div style={{ fontSize:12, fontWeight:700, color:u.text2, letterSpacing:1, textTransform:'uppercase', marginBottom:16 }}>Comfort Ratings (1–7)</div>
               {[{k:'vc',l:'Visual Comfort',hi:true},{k:'es',l:'Eye Strain',hi:false},{k:'fa',l:'Fatigue',hi:false},{k:'sa',l:'Satisfaction',hi:true}].map(({k,l,hi})=>{
                 const d=desc[k]; if (!d?.dark?.n&&!d?.light?.n) return null;
                 const dm=d?.dark?.mean, lm=d?.light?.mean;
@@ -4191,8 +4193,20 @@ function AnalysisTab({ u, users }) {
             </>}
           </div>
         ) : (
-          <div style={{ padding:pad, paddingTop:16 }}>
-            <div style={{ fontSize:13, color:u.text3 }}>Power analysis · Wilcoxon tests · Order effect check · Practice effect · Correlation matrix · Reliability</div>
+          <div style={{ padding:`16px ${isTablet?28:18}px` }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))', gap:8 }}>
+              {[
+                { l:"Wilcoxon validation", v:`${Object.values(resWilcoxon||{}).filter((w,i)=>w?.sig===Object.values(tests||{})[i]?.sig).length}/${Object.keys(resWilcoxon||{}).length} consistent` },
+                { l:"Practice effect", v:pe?.sig?"⚠ Detected":"✓ Not detected", c:pe?.sig?MAR:SIG },
+                { l:"Order effect", v:Object.values(resOrderEffect||{}).some(o=>o?.sig)?"⚠ Present in some":"✓ None detected", c:Object.values(resOrderEffect||{}).some(o=>o?.sig)?MAR:SIG },
+                { l:"Reliability", v:Object.values(reliability||{}).map(r=>r.alpha).filter(Boolean).length?"α computed":"No data" },
+              ].map(({l,v,c})=>(
+                <div key={l} style={{ padding:'10px 12px', borderRadius:8, background:u.fill, border:`1px solid ${u.border}` }}>
+                  <div style={{ fontSize:10, fontWeight:700, color:u.text2, textTransform:'uppercase', letterSpacing:.6, marginBottom:4 }}>{l}</div>
+                  <div style={{ fontSize:12, fontWeight:600, color:c||u.text }}>{v}</div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </SectionWrap>
@@ -4208,8 +4222,8 @@ function AnalysisTab({ u, users }) {
             {/* Individual winners */}
             {individualWinners && (
               <div style={{ marginBottom:28 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:u.text, marginBottom:6 }}>Who wins per person?</div>
-                <div style={{ fontSize:11, color:u.text3, marginBottom:14 }}>Each participant's better-performing theme (accuracy gap &gt; 2%).</div>
+                <div style={{ fontSize:13, fontWeight:700, color:u.text2, marginBottom:4 }}>Who performs better per person?</div>
+                <div style={{ fontSize:12, color:u.text2, marginBottom:14 }}>Each participant's better-performing theme (accuracy gap &gt; 2%).</div>
                 <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:8 }}>
                   {[
                     { label:'Dark mode better', n:individualWinners.dkWin, pct:+(individualWinners.dkWin/individualWinners.total*100).toFixed(1), gap:individualWinners.dkAvgGap, color:DK },
@@ -4447,10 +4461,14 @@ function AnalysisTab({ u, users }) {
       <SectionWrap>
         <SHdr num="09" title="APA-Formatted Results"
           sub="Ready to copy into your thesis or paper. Expand, select all, and paste."
-          action={<ExpandToggle id="apa" label="text" />} />
+          action={<ExpandToggle id="apa" label="APA text" />} />
         {expanded.apa ? (
           <div style={{ padding:pad }}>
-            <div style={{ padding:'24px 28px', background:u.fill, borderRadius:10, border:`1px solid ${u.border}`, userSelect:'all', cursor:'text' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <div style={{ fontSize:12, color:u.text2 }}>Select all text and paste into your thesis. Review before submission.</div>
+              <button onClick={()=>{ const el=document.getElementById('apa-text'); if(el){ const r=document.createRange(); r.selectNodeContents(el); window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(r); navigator.clipboard?.writeText(el.innerText).catch(()=>{}); } }} style={{ padding:'6px 14px', borderRadius:8, border:`1px solid ${SIG}40`, background:`${SIG}10`, color:SIG, fontFamily:L.font, cursor:'pointer', fontSize:12, fontWeight:600 }}>Copy all</button>
+            </div>
+            <div id="apa-text" style={{ padding:'24px 28px', background:u.fill, borderRadius:10, border:`1px solid ${u.border}`, userSelect:'all', cursor:'text', lineHeight:2 }}>
               {[
                 { head:'Participants', body:`A total of ${N} participant${N!==1?'s':''} completed a within-subjects experiment comparing dark mode and light mode interfaces across ${CFG.tasks.length} cognitive tasks. Participants were counterbalanced using alternating DL/LD assignment (DL: n = ${cb?.dl??'—'}, LD: n = ${cb?.ld??'—'}).` },
                 { head:'Statistical Analysis', body:`Paired-samples t-tests were conducted for ${NT} dependent variables. Given the exploratory nature of this study, results are interpreted primarily through effect sizes (Cohen's d) and 95% confidence intervals, with uncorrected p-values (α = .05) as the statistical threshold. FDR correction (Benjamini-Hochberg procedure) is reported as a supplementary measure, and Bonferroni-corrected values (α = ${ALPHA_BONF_LABEL}) are included for reference. Where Jarque-Bera tests indicated non-normality, Wilcoxon signed-rank tests were conducted as non-parametric alternatives.` },
@@ -4463,16 +4481,20 @@ function AnalysisTab({ u, users }) {
                 pe && { head:'Practice Effects', body:pe.sig?`A significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}, d = ${pe.cohensD}], indicating performance changed across phases independently of theme condition. This should be noted as a limitation.`:`No significant practice effect was detected [t(${pe.df}) = ${pe.t}, p = ${pe.p?.toFixed(4)}], indicating performance was stable across phases.` },
               ].filter(Boolean).map(({ head, body }, i) => (
                 <div key={i} style={{ marginBottom:20 }}>
-                  <div style={{ fontSize:13, fontWeight:700, color:u.text, marginBottom:6 }}>{head}.</div>
-                  <div style={{ fontSize:13, color:u.text2, lineHeight:1.9, fontFamily:"Georgia, 'Times New Roman', serif" }}>{body}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:u.text, marginBottom:6 }}>{head}.</div>
+                  <div style={{ fontSize:14, color:u.text, lineHeight:2, fontFamily:"Georgia, 'Times New Roman', serif" }}>{body}</div>
                 </div>
               ))}
             </div>
-            <div style={{ fontSize:11, color:u.text3, marginTop:10 }}>Select all text above to copy. Review statistical notation and update participant details before submission.</div>
+            <div style={{ fontSize:12, color:u.text2, marginTop:10, padding:'8px 14px', borderRadius:8, background:`${u.accent}08`, border:`1px solid ${u.accent}20` }}>
+              💡 Review all statistical values, update participant demographics, and verify italics before submission. Generated from live study data.
+            </div>
           </div>
         ) : (
-          <div style={{ padding:pad, paddingTop:16 }}>
-            <div style={{ fontSize:13, color:u.text3 }}>Auto-generated APA-formatted paragraph with all test statistics, ready to paste into your paper.</div>
+          <div style={{ padding:`16px ${isTablet?28:18}px` }}>
+            <div style={{ fontSize:13, color:u.text2, padding:'10px 14px', borderRadius:8, background:u.fill, border:`1px solid ${u.border}` }}>
+              Auto-generated APA 7th-edition formatted paragraphs covering participants, statistical analysis, accuracy, response time, workload, and {sigRows.length>0?`${sigRows.length} significant findings`:"null findings"} — ready to paste into your thesis.
+            </div>
           </div>
         )}
       </SectionWrap>
