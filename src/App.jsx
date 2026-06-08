@@ -5164,14 +5164,8 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             const ltAcc     = ltT.length ? avg(ltT.map(t=>t.acc||0)) : null;
             const dkRT      = dkRTs.length ? avg(dkRTs) : null;
             const ltRT      = ltRTs.length ? avg(ltRTs) : null;
-            const dkNasa    = useMemo(()=>{
-              const vals=allExps.filter(e=>e.theme==="dark").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null);
-              return vals.length?avg(vals):null;
-            },[allExps]);
-            const ltNasa    = useMemo(()=>{
-              const vals=allExps.filter(e=>e.theme==="light").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null);
-              return vals.length?avg(vals):null;
-            },[allExps]);
+            const dkNasa = (() => { const vals=allExps.filter(e=>e.theme==="dark").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null); return vals.length?avg(vals):null; })();
+            const ltNasa = (() => { const vals=allExps.filter(e=>e.theme==="light").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null); return vals.length?avg(vals):null; })();
             // Recent activity (last 7 days)
             const now = Date.now();
             const recent7 = users.filter(u2=>u2.createdAt && (now-new Date(u2.createdAt).getTime())<7*86400000);
