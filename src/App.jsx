@@ -62,7 +62,7 @@ const R = { sm:8, md:12, lg:16, xl:20, pill:999 };
 const mkUI = (dark) => dark ? {
   bg:"#07090e", bg2:"#0c0f17", surface:"rgba(255,255,255,0.04)", surfaceSolid:"#111520",
   surface2:"rgba(255,255,255,0.07)", border:"rgba(255,255,255,0.07)", border2:"rgba(255,255,255,0.13)",
-  text:"#dde4f0", text2:"rgba(221,228,240,0.80)", text3:"rgba(221,228,240,0.55)",
+  text:"#dde4f0", text2:"rgba(221,228,240,0.90)", text3:"rgba(221,228,240,0.70)",
   accent:"#4f8ef7", accentFg:"#fff", accent2:"#8b5cf6",
   grad:"linear-gradient(135deg,#4f8ef7,#8b5cf6)",
   gradSoft:"linear-gradient(135deg,rgba(79,142,247,0.14),rgba(139,92,246,0.08))",
@@ -75,7 +75,7 @@ const mkUI = (dark) => dark ? {
 } : {
   bg:"#f5f7fc", bg2:"#eceff8", surface:"rgba(255,255,255,0.9)", surfaceSolid:"#ffffff",
   surface2:"#edf0f9", border:"rgba(0,0,0,0.07)", border2:"rgba(0,0,0,0.13)",
-  text:"#0d1117", text2:"rgba(13,17,23,0.75)", text3:"rgba(13,17,23,0.52)",
+  text:"#0d1117", text2:"rgba(13,17,23,0.85)", text3:"rgba(13,17,23,0.65)",
   accent:"#1a6ef5", accentFg:"#fff", accent2:"#7c3aed",
   grad:"linear-gradient(135deg,#1a6ef5,#7c3aed)",
   gradSoft:"linear-gradient(135deg,rgba(26,110,245,0.09),rgba(124,58,237,0.06))",
@@ -5507,7 +5507,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
                   {/* Study details */}
                   <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:12, padding:"18px 20px" }}>
-                    <div style={{ fontSize:11, fontWeight:600, color:u.text3, textTransform:"uppercase", letterSpacing:.8, marginBottom:14 }}>Study Details</div>
+                    <div style={{ fontSize:11, fontWeight:700, color:u.text2, textTransform:"uppercase", letterSpacing:.8, marginBottom:14 }}>Study Details</div>
                     {[
                       { l:"Assigned Group", v:sel.orderGroup==="DL"?"DL — Dark first, then Light":sel.orderGroup==="LD"?"LD — Light first, then Dark":sel.orderGroup||"—", hl:true },
                       { l:"Preferred Theme", v:sel.pref&&sel.pref!=="none"?sel.pref.charAt(0).toUpperCase()+sel.pref.slice(1):"No preference", hl:false },
@@ -5516,20 +5516,20 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                       { l:"Completed At", v:sel.completedAt?new Date(sel.completedAt).toLocaleString("en-GB",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",hour12:true}):"Not yet", hl:false },
                     ].map(({ l,v,hl }) => (
                       <div key={l} style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", padding:"8px 0", borderBottom:`1px solid ${u.border}`, gap:12 }}>
-                        <span style={{ fontSize:12, color:u.text3, flexShrink:0 }}>{l}</span>
-                        <span style={{ fontSize:12, fontWeight:hl?700:500, color:hl?u.accent:u.text, textAlign:"right" }}>{v}</span>
+                        <span style={{ fontSize:12, color:u.text2, flexShrink:0, fontWeight:500 }}>{l}</span>
+                        <span style={{ fontSize:12, fontWeight:hl?700:600, color:hl?u.accent:u.text, textAlign:"right" }}>{v}</span>
                       </div>
                     ))}
                   </div>
 
                   {/* Demographics */}
                   <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:12, padding:"18px 20px" }}>
-                    <div style={{ fontSize:11, fontWeight:600, color:u.text3, textTransform:"uppercase", letterSpacing:.8, marginBottom:14 }}>Demographics</div>
+                    <div style={{ fontSize:11, fontWeight:700, color:u.text2, textTransform:"uppercase", letterSpacing:.8, marginBottom:14 }}>Demographics</div>
                     {sel.dem && Object.keys(sel.dem).length > 0
                       ? Object.entries(sel.dem).map(([k,v]) => (
                           <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0", borderBottom:`1px solid ${u.border}`, gap:12 }}>
-                            <span style={{ fontSize:12, color:u.text3, textTransform:"capitalize", flexShrink:0 }}>{k.replace(/([A-Z])/g," $1")}</span>
-                            <span style={{ fontSize:12, fontWeight:500, color:u.text, textAlign:"right" }}>{String(v)}</span>
+                            <span style={{ fontSize:12, color:u.text2, textTransform:"capitalize", flexShrink:0, fontWeight:500 }}>{k.replace(/([A-Z])/g," $1")}</span>
+                            <span style={{ fontSize:12, fontWeight:600, color:u.text, textAlign:"right" }}>{String(v)}</span>
                           </div>
                         ))
                       : <div style={{ fontSize:12, color:u.text3, textAlign:"center", padding:20 }}>No demographic data</div>
@@ -5538,7 +5538,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                 </div>
 
                 {/* ── Sessions ────────────────────────────────────────── */}
-                <div style={{ fontSize:11, fontWeight:600, color:u.text3, textTransform:"uppercase", letterSpacing:.8, marginBottom:10 }}>Experiment Sessions</div>
+                <div style={{ fontSize:11, fontWeight:700, color:u.text2, textTransform:"uppercase", letterSpacing:.8, marginBottom:10 }}>Experiment Sessions</div>
                 {(sel.experiments||[]).length===0 && (
                   <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:12, padding:"28px 20px", textAlign:"center", color:u.text3, fontSize:13, marginBottom:16 }}>No sessions completed yet</div>
                 )}
@@ -5581,7 +5581,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                             <thead>
                               <tr style={{ background:u.fill }}>
                                 {["Task","Trials","Accuracy","Avg RT","Errors"].map(h=>(
-                                  <th key={h} style={{ padding:"8px 12px", textAlign:"left", color:u.text3, fontWeight:600, whiteSpace:"nowrap", fontSize:11, letterSpacing:.3 }}>{h}</th>
+                                  <th key={h} style={{ padding:"8px 12px", textAlign:"left", color:u.text, fontWeight:600, whiteSpace:"nowrap", fontSize:12, letterSpacing:.3 }}>{h}</th>
                                 ))}
                               </tr>
                             </thead>
@@ -5611,7 +5611,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                         <div style={{ padding:"14px 20px", borderTop:`1px solid ${u.border}`, display:"flex", gap:12, flexWrap:"wrap" }}>
                           {sess.comfort && (
                             <div style={{ flex:1, minWidth:200 }}>
-                              <div style={{ fontSize:11, color:u.text3, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:.6 }}>Comfort Ratings (1–7)</div>
+                              <div style={{ fontSize:11, color:u.text2, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:.6 }}>Comfort Ratings (1–7)</div>
                               <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
                                 {[{l:"Visual",k:"visualComfort"},{l:"Eye Strain",k:"eyeStrain"},{l:"Fatigue",k:"fatigue"},{l:"Satisfaction",k:"satisfaction"}].map(({l,k})=>{
                                   const val = sess.comfort[k];
@@ -5628,7 +5628,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                           )}
                           {nasa && (
                             <div style={{ flex:1, minWidth:200 }}>
-                              <div style={{ fontSize:11, color:u.text3, fontWeight:600, marginBottom:8, textTransform:"uppercase", letterSpacing:.6 }}>NASA-TLX · Total: <span style={{ color:u.accent }}>{nasa.totalScore?.toFixed(1)}/20</span></div>
+                              <div style={{ fontSize:11, color:u.text2, fontWeight:700, marginBottom:8, textTransform:"uppercase", letterSpacing:.6 }}>NASA-TLX · Total: <span style={{ color:u.accent }}>{nasa.totalScore?.toFixed(1)}/20</span></div>
                               <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                                 {[{k:"md",l:"Mental"},{k:"pd",l:"Physical"},{k:"td",l:"Temporal"},{k:"pe",l:"Perf."},{k:"ef",l:"Effort"},{k:"fr",l:"Frustrat."}].map(({k,l})=>{
                                   const val = nasa[k];
