@@ -5654,41 +5654,305 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
         )}
         {tab === "monitor" && <TabErrorBoundary u={u}><LiveMonitorTab u={u} users={users} /></TabErrorBoundary>}
         {tab === "statistics" && (
-          <TabErrorBoundary u={u}><div className="au">
-            <h1 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: "0 0 24px" }}>Statistics</h1>
-            <ParticipantHeatmap u={u} users={users} />
-            <Card u={u} style={{ padding: L.spLg, marginBottom: 16 }}>
-              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Per-Task Breakdown</div>
-                <div className="tbl-wrap">
-                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: L.font }}>
-                  <thead>
-                    <tr style={{ borderBottom: `1px solid ${u.border}` }}>
-                      {["Task","n","Overall","Dark Acc","Light Acc","Dark RT","Light RT"].map(h => <th key={h} style={{ padding: "8px 10px", textAlign: "left", fontSize: L.fsXs, color: u.text3, fontWeight: L.fwSemi, letterSpacing: .5, textTransform: "uppercase", whiteSpace: "nowrap" }}>{h}</th>)}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tStats.map((ts, i) => (
-                      <tr key={ts.tid} style={{ borderBottom: `1px solid ${u.border}`, background: i % 2 === 0 ? u.fill : "transparent" }}>
-                        <td style={{ padding: "9px 10px", fontSize: L.fsSm, color: u.text, fontWeight: L.fwSemi }}>{ts.l}</td>
-                        <td style={{ padding: "9px 10px", fontSize: L.fsSm, color: u.text3 }}>{ts.n}</td>
-                        <td style={{ padding: "9px 10px", fontSize: L.fsSm, color: u.text2 }}>{ts.n ? fmtPct(ts.acc) : "—"}</td>
-                        <td style={{ padding: "9px 10px", fontSize: L.fsSm, color: u.accent2 }}>{fmtPct(ts.dk.acc)}</td>
-                        <td style={{ padding: "9px 10px", fontSize: L.fsSm, color: u.gold }}>{fmtPct(ts.lt.acc)}</td>
-                        <td style={{ padding: "9px 10px", fontSize: L.fsSm, color: u.text2, fontFamily: L.mono }}>{fmtMs(ts.dk.rt)}</td>
-                        <td style={{ padding: "9px 10px", fontSize: L.fsSm, color: u.text2, fontFamily: L.mono }}>{fmtMs(ts.lt.rt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <TabErrorBoundary u={u}><div className="au" style={{ fontFamily:L.font }}>
+          {(() => {
+            const DK="#7c3aed", LT="#d97706", SIG="#059669";
+            const completed = users.filter(u2=>(u2.experiments||[]).length>=2);
+            const N = completed.length;
+
+            // ── Aggregate metrics ────────────────────────────────────────
+            const dkAcc = dkT.length ? avg(dkT.map(t=>t.acc||0)) : null;
+            const ltAcc = ltT.length ? avg(ltT.map(t=>t.acc||0)) : null;
+            const dkRT  = dkRTs.length ? avg(dkRTs) : null;
+            const ltRT  = ltRTs.length ? avg(ltRTs) : null;
+            const dkErr = dkT.length ? avg(dkT.map(t=>t.err||0)) : null;
+            const ltErr = ltT.length ? avg(ltT.map(t=>t.err||0)) : null;
+            const dkNasaVals = allExps.filter(e=>e.theme==="dark").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null);
+            const ltNasaVals = allExps.filter(e=>e.theme==="light").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null);
+            const dkNasa = dkNasaVals.length ? avg(dkNasaVals) : null;
+            const ltNasa = ltNasaVals.length ? avg(ltNasaVals) : null;
+            const dkVcVals = allExps.filter(e=>e.theme==="dark").map(e=>e.comfort?.visualComfort).filter(v=>v!=null);
+            const ltVcVals = allExps.filter(e=>e.theme==="light").map(e=>e.comfort?.visualComfort).filter(v=>v!=null);
+            const dkVc = dkVcVals.length ? avg(dkVcVals) : null;
+            const ltVc = ltVcVals.length ? avg(ltVcVals) : null;
+
+            // ── Per-participant winner analysis ──────────────────────────
+            let dkWin=0, ltWin=0, tied=0;
+            completed.forEach(p=>{
+              const exps = p.experiments||[];
+              const dk = exps.find(e=>e.theme==="dark");
+              const lt = exps.find(e=>e.theme==="light");
+              if(!dk||!lt) return;
+              const dkA = avg((dk.tasks||[]).flatMap(t=>t.trials||[]).map(t=>t.acc||0));
+              const ltA = avg((lt.tasks||[]).flatMap(t=>t.trials||[]).map(t=>t.acc||0));
+              const diff = (dkA||0)-(ltA||0);
+              if(diff>0.02) dkWin++; else if(diff<-0.02) ltWin++; else tied++;
+            });
+
+            // ── Preference breakdown ─────────────────────────────────────
+            const prefDk=completed.filter(p=>p.pref==="dark").length;
+            const prefLt=completed.filter(p=>p.pref==="light").length;
+            const prefNo=completed.filter(p=>!p.pref||p.pref==="none").length;
+
+            // ── Preference vs performance alignment ──────────────────────
+            let aligned=0, misaligned=0;
+            completed.forEach(p=>{
+              if(!p.pref||p.pref==="none") return;
+              const exps=p.experiments||[];
+              const dk=exps.find(e=>e.theme==="dark"); const lt=exps.find(e=>e.theme==="light");
+              if(!dk||!lt) return;
+              const dkA=avg((dk.tasks||[]).flatMap(t=>t.trials||[]).map(t=>t.acc||0));
+              const ltA=avg((lt.tasks||[]).flatMap(t=>t.trials||[]).map(t=>t.acc||0));
+              const better=dkA>ltA?"dark":"light";
+              if(p.pref===better) aligned++; else misaligned++;
+            });
+
+            const Sec = ({title,sub,children}) => (
+              <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:14, overflow:"hidden", marginBottom:16 }}>
+                <div style={{ padding:"18px 22px", borderBottom:`1px solid ${u.border}` }}>
+                  <div style={{ fontSize:15, fontWeight:700, color:u.text }}>{title}</div>
+                  {sub && <div style={{ fontSize:12, color:u.text2, marginTop:3 }}>{sub}</div>}
+                </div>
+                <div style={{ padding:"20px 22px" }}>{children}</div>
               </div>
-            </Card>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: L.spMd }}>
-              {[{ label:"RT Distribution — Dark", rts:dkRTs, c:u.accent2 }, { label:"RT Distribution — Light", rts:ltRTs, c:u.gold }].map(({ label, rts, c }) => (
-                <Card key={label} u={u} style={{ padding: L.spLg }}>
-                  {rts.length > 0 ? <HBar u={u} data={[{ l:"<300ms", v:rts.filter(r=>r<300).length, c:u.green },{ l:"300–500ms", v:rts.filter(r=>r>=300&&r<500).length, c },{ l:"500–800ms", v:rts.filter(r=>r>=500&&r<800).length, c:u.orange },{ l:">800ms", v:rts.filter(r=>r>=800).length, c:u.red }]} /> : <p style={{ color:u.text3, fontSize:L.fsSm }}>No RT data yet.</p>}
-                </Card>
-              ))}
-            </div>
+            );
+
+            const MiniBar = ({dk,lt,max,dkLabel,ltLabel,unit=""}) => {
+              const dkW = max ? (dk||0)/max*100 : 0;
+              const ltW = max ? (lt||0)/max*100 : 0;
+              return (
+                <div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                    <div style={{ width:8, height:8, borderRadius:2, background:DK, flexShrink:0 }} />
+                    <div style={{ flex:1, height:6, background:u.fill, borderRadius:3, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${dkW}%`, background:DK, opacity:.85, borderRadius:3 }} />
+                    </div>
+                    <span style={{ fontSize:12, fontWeight:700, color:DK, fontFamily:L.mono, width:60, textAlign:"right" }}>{dk!=null?dk.toFixed(dkLabel||2)+unit:"—"}</span>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:8, height:8, borderRadius:2, background:LT, flexShrink:0 }} />
+                    <div style={{ flex:1, height:6, background:u.fill, borderRadius:3, overflow:"hidden" }}>
+                      <div style={{ height:"100%", width:`${ltW}%`, background:LT, opacity:.85, borderRadius:3 }} />
+                    </div>
+                    <span style={{ fontSize:12, fontWeight:700, color:LT, fontFamily:L.mono, width:60, textAlign:"right" }}>{lt!=null?lt.toFixed(ltLabel||2)+unit:"—"}</span>
+                  </div>
+                </div>
+              );
+            };
+
+            return <>
+              {/* Header */}
+              <div style={{ marginBottom:24 }}>
+                <div style={{ fontSize:12, color:u.text2, letterSpacing:1.5, textTransform:"uppercase", marginBottom:6, fontWeight:600 }}>Research Statistics</div>
+                <h1 style={{ fontSize:24, fontWeight:800, color:u.text, margin:"0 0 4px", letterSpacing:-.5 }}>Study Metrics</h1>
+                <p style={{ color:u.text2, fontSize:13, margin:0 }}>Aggregated performance data across {N} paired participants · {allT.length.toLocaleString()} total trials</p>
+              </div>
+
+              {/* ── Summary KPIs ── */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:12, marginBottom:16 }}>
+                {[
+                  { l:"Dark Accuracy",   v:dkAcc!=null?(dkAcc*100).toFixed(1)+"%":"—",    c:DK,       sub:"mean across all trials" },
+                  { l:"Light Accuracy",  v:ltAcc!=null?(ltAcc*100).toFixed(1)+"%":"—",    c:LT,       sub:"mean across all trials" },
+                  { l:"Dark Avg RT",     v:dkRT!=null?Math.round(dkRT)+"ms":"—",           c:DK,       sub:"mean response time" },
+                  { l:"Light Avg RT",    v:ltRT!=null?Math.round(ltRT)+"ms":"—",           c:LT,       sub:"mean response time" },
+                  { l:"Dark NASA",       v:dkNasa!=null?dkNasa.toFixed(1)+"/20":"—",       c:DK,       sub:"mean workload" },
+                  { l:"Light NASA",      v:ltNasa!=null?ltNasa.toFixed(1)+"/20":"—",       c:LT,       sub:"mean workload" },
+                ].map(({ l,v,c,sub }) => (
+                  <div key={l} style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:12, padding:"14px 16px", position:"relative", overflow:"hidden" }}>
+                    <div style={{ position:"absolute", top:0, left:0, right:0, height:2, background:c }} />
+                    <div style={{ fontSize:20, fontWeight:800, color:c, fontFamily:L.mono, lineHeight:1, marginBottom:4 }}>{v}</div>
+                    <div style={{ fontSize:11, fontWeight:600, color:u.text, textTransform:"uppercase", letterSpacing:.5 }}>{l}</div>
+                    <div style={{ fontSize:10, color:u.text2, marginTop:2 }}>{sub}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── Main 2-col ── */}
+              <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"1fr 1fr", gap:16, marginBottom:16 }}>
+
+                {/* Per-metric comparison */}
+                <Sec title="Dark vs Light — Key Metrics" sub="Mean values across all paired participants">
+                  {[
+                    { l:"Accuracy",       dk:dkAcc!=null?dkAcc*100:null,  lt:ltAcc!=null?ltAcc*100:null,  max:100, dec:1, unit:"%", hi:true  },
+                    { l:"Response Time",  dk:dkRT,    lt:ltRT,    max:Math.max(dkRT||0,ltRT||0)*1.2, dec:0, unit:"ms", hi:false },
+                    { l:"Error Rate",     dk:dkErr!=null?dkErr*100:null, lt:ltErr!=null?ltErr*100:null, max:Math.max((dkErr||0)*100,(ltErr||0)*100)*1.5||10, dec:2, unit:"%", hi:false },
+                    { l:"NASA Workload",  dk:dkNasa,  lt:ltNasa,  max:20, dec:1, unit:"/20", hi:false },
+                    { l:"Visual Comfort", dk:dkVc,    lt:ltVc,    max:7,  dec:2, unit:"/7",  hi:true  },
+                  ].map(({ l, dk, lt, max, dec, unit, hi }) => {
+                    const diff = dk!=null&&lt!=null ? dk-lt : null;
+                    const dkBetter = diff!=null&&(hi?diff>0:diff<0);
+                    const ltBetter = diff!=null&&(hi?diff<0:diff>0);
+                    return (
+                      <div key={l} style={{ marginBottom:16 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
+                          <span style={{ fontSize:13, fontWeight:600, color:u.text }}>{l}</span>
+                          {diff!=null && <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, fontWeight:600, background:dkBetter?`${DK}12`:ltBetter?`${LT}12`:u.fill, color:dkBetter?DK:ltBetter?LT:u.text2 }}>
+                            {dkBetter?"Dark better":ltBetter?"Light better":"Equal"}  {diff!=null?`(Δ${diff>0?"+":""}${diff.toFixed(dec)}${unit})`:""}
+                          </span>}
+                        </div>
+                        <MiniBar dk={dk} lt={lt} max={max} dkLabel={dec} ltLabel={dec} unit={unit} />
+                      </div>
+                    );
+                  })}
+                </Sec>
+
+                {/* Individual winner + preference */}
+                <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                  <Sec title="Individual Performance Winners" sub="Which theme produced better accuracy per participant (gap > 2%)">
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10, marginBottom:16 }}>
+                      {[
+                        { l:"Dark better",  v:dkWin, pct:N?(dkWin/N*100).toFixed(0):0, c:DK },
+                        { l:"Light better", v:ltWin, pct:N?(ltWin/N*100).toFixed(0):0, c:LT },
+                        { l:"Tied (≤2%)",   v:tied,  pct:N?(tied/N*100).toFixed(0):0,  c:u.text2 },
+                      ].map(({ l,v,pct,c }) => (
+                        <div key={l} style={{ textAlign:"center", padding:"12px 8px", borderRadius:10, background:u.fill, border:`1px solid ${u.border}` }}>
+                          <div style={{ fontSize:22, fontWeight:800, color:c, fontFamily:L.mono }}>{pct}%</div>
+                          <div style={{ fontSize:13, fontWeight:600, color:c, fontFamily:L.mono }}>{v}</div>
+                          <div style={{ fontSize:10, color:u.text2, marginTop:3 }}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Stacked bar */}
+                    <div style={{ height:8, borderRadius:4, overflow:"hidden", display:"flex" }}>
+                      <div style={{ width:`${N?dkWin/N*100:0}%`, background:DK, opacity:.85 }} />
+                      <div style={{ width:`${N?ltWin/N*100:0}%`, background:LT, opacity:.85 }} />
+                      <div style={{ flex:1, background:u.fill }} />
+                    </div>
+                    <div style={{ display:"flex", gap:12, marginTop:8, fontSize:11 }}>
+                      <span style={{ color:DK }}>■ Dark {N?(dkWin/N*100).toFixed(0):0}%</span>
+                      <span style={{ color:LT }}>■ Light {N?(ltWin/N*100).toFixed(0):0}%</span>
+                      <span style={{ color:u.text2 }}>■ Tied {N?(tied/N*100).toFixed(0):0}%</span>
+                    </div>
+                  </Sec>
+
+                  <Sec title="Preference vs Performance Alignment" sub="Does the theme users prefer match the one they perform better on?">
+                    <div style={{ display:"flex", gap:12, marginBottom:12 }}>
+                      <div style={{ flex:1, padding:"14px 12px", borderRadius:10, background:`${SIG}08`, border:`1px solid ${SIG}25`, textAlign:"center" }}>
+                        <div style={{ fontSize:24, fontWeight:800, color:SIG, fontFamily:L.mono }}>{aligned}</div>
+                        <div style={{ fontSize:11, color:SIG, fontWeight:600, marginTop:3 }}>Aligned</div>
+                        <div style={{ fontSize:10, color:u.text2 }}>{aligned+misaligned>0?((aligned/(aligned+misaligned))*100).toFixed(0):0}% match</div>
+                      </div>
+                      <div style={{ flex:1, padding:"14px 12px", borderRadius:10, background:`${u.orange}08`, border:`1px solid ${u.orange}25`, textAlign:"center" }}>
+                        <div style={{ fontSize:24, fontWeight:800, color:u.orange, fontFamily:L.mono }}>{misaligned}</div>
+                        <div style={{ fontSize:11, color:u.orange, fontWeight:600, marginTop:3 }}>Misaligned</div>
+                        <div style={{ fontSize:10, color:u.text2 }}>{aligned+misaligned>0?((misaligned/(aligned+misaligned))*100).toFixed(0):0}% mismatch</div>
+                      </div>
+                    </div>
+                    <div style={{ fontSize:11, color:u.text2, padding:"8px 12px", borderRadius:8, background:u.fill }}>
+                      💡 Users whose preference matches their performance benefit most from user-controlled theme selection.
+                    </div>
+                  </Sec>
+
+                  <Sec title="Theme Preference Distribution" sub="Post-study declared preference among completed participants">
+                    {[{l:"Dark Mode",v:prefDk,c:DK},{l:"Light Mode",v:prefLt,c:LT},{l:"No Preference",v:prefNo,c:u.text2}].map(({l,v,c})=>(
+                      <div key={l} style={{ marginBottom:10 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5 }}>
+                          <span style={{ fontSize:13, color:u.text, fontWeight:500 }}>{l}</span>
+                          <span style={{ fontSize:13, fontWeight:700, color:c, fontFamily:L.mono }}>{v} <span style={{ color:u.text2, fontWeight:400 }}>({N?(v/N*100).toFixed(0):0}%)</span></span>
+                        </div>
+                        <div style={{ height:6, background:u.fill, borderRadius:3, overflow:"hidden" }}>
+                          <div style={{ height:"100%", width:`${N?v/N*100:0}%`, background:c, opacity:.85, borderRadius:3 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </Sec>
+                </div>
+              </div>
+
+              {/* ── Per-task table (full width) ── */}
+              <Sec title="Per-Task Performance Breakdown" sub="Mean accuracy and response time per task type · Dark vs Light · Difference highlighted">
+                <div style={{ overflowX:"auto" }}>
+                  <table style={{ width:"100%", borderCollapse:"collapse", minWidth:600 }}>
+                    <thead>
+                      <tr style={{ background:u.fill }}>
+                        {["Task","Trials","Overall Acc","Dark Acc","Light Acc","Δ Acc","Dark RT","Light RT","Δ RT"].map(h=>(
+                          <th key={h} style={{ padding:"10px 14px", textAlign:"left", fontSize:11, fontWeight:700, color:u.text, letterSpacing:.4, whiteSpace:"nowrap", borderBottom:`2px solid ${u.border}` }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tStats.map((ts,i)=>{
+                        const dkA=ts.dk?.acc, ltA=ts.lt?.acc;
+                        const diffAcc=dkA!=null&&ltA!=null?dkA-ltA:null;
+                        const dkR=ts.dk?.rt, ltR=ts.lt?.rt;
+                        const diffRT=dkR!=null&&ltR!=null?dkR-ltR:null;
+                        const accColor=diffAcc!=null?Math.abs(diffAcc)>0.05?(diffAcc>0?DK:LT):u.text2:u.text2;
+                        const rtColor=diffRT!=null?Math.abs(diffRT)>100?(diffRT<0?DK:LT):u.text2:u.text2;
+                        return (
+                          <tr key={ts.tid} style={{ borderBottom:`1px solid ${u.border}`, background:i%2===0?"transparent":u.fill+"66" }}>
+                            <td style={{ padding:"10px 14px", fontWeight:700, color:u.text, fontSize:13 }}>{ts.l}</td>
+                            <td style={{ padding:"10px 14px", color:u.text2, fontFamily:L.mono, fontSize:12 }}>{ts.n}</td>
+                            <td style={{ padding:"10px 14px", fontWeight:600, color:u.text, fontFamily:L.mono, fontSize:12 }}>{ts.n?fmtPct(ts.acc):"—"}</td>
+                            <td style={{ padding:"10px 14px", fontWeight:600, color:DK, fontFamily:L.mono, fontSize:12 }}>{fmtPct(dkA)}</td>
+                            <td style={{ padding:"10px 14px", fontWeight:600, color:LT, fontFamily:L.mono, fontSize:12 }}>{fmtPct(ltA)}</td>
+                            <td style={{ padding:"10px 14px", fontWeight:700, color:accColor, fontFamily:L.mono, fontSize:12 }}>
+                              {diffAcc!=null?<span style={{ padding:"2px 8px", borderRadius:6, background:`${accColor}12`, border:`1px solid ${accColor}25` }}>{diffAcc>0?"+":""}{(diffAcc*100).toFixed(1)}%</span>:"—"}
+                            </td>
+                            <td style={{ padding:"10px 14px", color:DK, fontFamily:L.mono, fontSize:12 }}>{fmtMs(dkR)}</td>
+                            <td style={{ padding:"10px 14px", color:LT, fontFamily:L.mono, fontSize:12 }}>{fmtMs(ltR)}</td>
+                            <td style={{ padding:"10px 14px", fontWeight:700, color:rtColor, fontFamily:L.mono, fontSize:12 }}>
+                              {diffRT!=null?<span style={{ padding:"2px 8px", borderRadius:6, background:`${rtColor}12`, border:`1px solid ${rtColor}25` }}>{diffRT>0?"+":""}{Math.round(diffRT)}ms</span>:"—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr style={{ background:u.fill, borderTop:`2px solid ${u.border}` }}>
+                        <td style={{ padding:"10px 14px", fontWeight:700, color:u.text, fontSize:13 }}>Overall</td>
+                        <td style={{ padding:"10px 14px", color:u.text2, fontFamily:L.mono, fontSize:12 }}>{allT.length}</td>
+                        <td style={{ padding:"10px 14px", fontWeight:700, color:u.text, fontFamily:L.mono, fontSize:12 }}>{fmtPct(avg(allT.map(t=>t.acc||0)))}</td>
+                        <td style={{ padding:"10px 14px", fontWeight:700, color:DK, fontFamily:L.mono, fontSize:12 }}>{fmtPct(dkAcc)}</td>
+                        <td style={{ padding:"10px 14px", fontWeight:700, color:LT, fontFamily:L.mono, fontSize:12 }}>{fmtPct(ltAcc)}</td>
+                        <td colSpan={4} style={{ padding:"10px 14px", fontSize:11, color:u.text2 }}>n = {N} paired participants</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </Sec>
+
+              {/* ── RT Distribution ── */}
+              <Sec title="Response Time Distribution" sub="Count of trials by RT bucket · Dark vs Light · Faster is better">
+                <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"1fr 1fr", gap:20 }}>
+                  {[{label:"Dark Mode",rts:dkRTs,c:DK},{label:"Light Mode",rts:ltRTs,c:LT}].map(({label,rts,c})=>{
+                    const total=rts.length||1;
+                    const buckets=[
+                      {l:"< 300ms",  v:rts.filter(r=>r<300).length,             good:true  },
+                      {l:"300–500ms",v:rts.filter(r=>r>=300&&r<500).length,     good:true  },
+                      {l:"500–800ms",v:rts.filter(r=>r>=500&&r<800).length,     good:false },
+                      {l:"800–1500ms",v:rts.filter(r=>r>=800&&r<1500).length,   good:false },
+                      {l:"> 1500ms", v:rts.filter(r=>r>=1500).length,           good:false },
+                    ];
+                    const medianRT = rts.length ? [...rts].sort((a,b)=>a-b)[Math.floor(rts.length/2)] : null;
+                    return (
+                      <div key={label}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color:c }}>{label}</div>
+                          <div style={{ fontSize:11, color:u.text2 }}>n={rts.length} · median={medianRT?Math.round(medianRT)+"ms":"—"}</div>
+                        </div>
+                        {buckets.map(({l,v,good})=>(
+                          <div key={l} style={{ marginBottom:8 }}>
+                            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+                              <span style={{ fontSize:12, color:u.text, fontWeight:500 }}>{l}</span>
+                              <span style={{ fontSize:12, fontWeight:600, color:good?SIG:v>total*.3?u.red:u.text2, fontFamily:L.mono }}>{v} ({(v/total*100).toFixed(0)}%)</span>
+                            </div>
+                            <div style={{ height:5, background:u.fill, borderRadius:3, overflow:"hidden" }}>
+                              <div style={{ height:"100%", width:`${v/total*100}%`, background:good?SIG:c, opacity:.75, borderRadius:3 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </Sec>
+
+              {/* ── Participant heatmap ── */}
+              <Sec title="Participant × Task Heatmap" sub="Combined dark + light accuracy per participant per task">
+                <ParticipantHeatmap u={u} users={users} />
+              </Sec>
+            </>;
+          })()}
           </div></TabErrorBoundary>
         )}
         {tab === "stats_engine" && <TabErrorBoundary u={u}><AnalysisTab u={u} users={users} /></TabErrorBoundary>}
