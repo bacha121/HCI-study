@@ -5152,36 +5152,256 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
         <div style={{ width:"100%", padding:mobile?`${L.spMd}px 14px`:`${L.spXl}px ${L.spLg}px` }}>
         {tab === "overview" && (
           <TabErrorBoundary u={u}><div className="au">
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-              <h1 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: u.text, margin: 0 }}>Study Overview</h1>
-            </div>
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:L.spMd, marginBottom:20 }}>
-              {[{ l:"Participants", v:users.length, c:u.accent }, { l:"Sessions", v:allExps.length, c:u.accent2 }, { l:"Trials", v:allT.length, c:u.green }, { l:"Completion", v:users.length ? `${Math.round(users.filter(u2 => (u2.experiments||[]).length >= 2).length / users.length * 100)}%` : "—", c:u.teal }].map(({ l, v, c }) => (
-                <Card key={l} u={u} style={{ padding: L.spLg, position: "relative", overflow: "hidden" }}>
-                  <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: c }} />
-                  <div style={{ fontSize: L.fsXs, color: u.text3, letterSpacing: .8, textTransform: "uppercase", marginBottom: 8 }}>{l}</div>
-                  <div style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: c }}>{v}</div>
-                </Card>
-              ))}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: L.spMd }}>
-              <Card u={u} style={{ padding: L.spLg }}>
-                <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Theme Comparison</div>
-                {[{ l:"Accuracy", d:fmtPct(avg(dkT.map(t => t.acc||0))), li:fmtPct(avg(ltT.map(t => t.acc||0))) }, { l:"Avg RT", d:fmtMs(avg(dkRTs)), li:fmtMs(avg(ltRTs)) }, { l:"Errors", d:String(dkT.reduce((s,t)=>s+(t.err||0),0)), li:String(ltT.reduce((s,t)=>s+(t.err||0),0)) }].map(({ l, d, li }) => (
-                  <div key={l} style={{ marginBottom: 10 }}>
-                    <span style={{ fontSize: L.fsXs, color: u.text3, display:"block", marginBottom:4 }}>{l}</span>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 8 }}>
-                      <div style={{ padding: "6px 10px", borderRadius: R.sm, background: `${u.accent2}14`, border: `1px solid ${u.accent2}24`, textAlign: "center" }}><div style={{ fontSize: L.fsXs, color: u.text3 }}>🌙 Dark</div><div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.accent2 }}>{d}</div></div>
-                      <div style={{ padding: "6px 10px", borderRadius: R.sm, background: `${u.gold}14`, border: `1px solid ${u.gold}24`, textAlign: "center" }}><div style={{ fontSize: L.fsXs, color: u.text3 }}>☀️ Light</div><div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.gold }}>{li}</div></div>
+          {(() => {
+            const DK = "#7c3aed", LT = "#d97706", SIG = "#059669";
+            const completed = users.filter(u2 => (u2.experiments||[]).length >= 2);
+            const inProg    = users.filter(u2 => (u2.experiments||[]).length === 1);
+            const registered= users.filter(u2 => (u2.experiments||[]).length === 0);
+            const dlN = users.filter(u2=>u2.orderGroup==="DL").length;
+            const ldN = users.filter(u2=>u2.orderGroup==="LD").length;
+            const balanced  = Math.abs(dlN-ldN) <= 2;
+            const dkAcc     = dkT.length ? avg(dkT.map(t=>t.acc||0)) : null;
+            const ltAcc     = ltT.length ? avg(ltT.map(t=>t.acc||0)) : null;
+            const dkRT      = dkRTs.length ? avg(dkRTs) : null;
+            const ltRT      = ltRTs.length ? avg(ltRTs) : null;
+            const dkNasa    = useMemo(()=>{
+              const vals=allExps.filter(e=>e.theme==="dark").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null);
+              return vals.length?avg(vals):null;
+            },[allExps]);
+            const ltNasa    = useMemo(()=>{
+              const vals=allExps.filter(e=>e.theme==="light").map(e=>e.nasaTLX?.totalScore).filter(v=>v!=null);
+              return vals.length?avg(vals):null;
+            },[allExps]);
+            // Recent activity (last 7 days)
+            const now = Date.now();
+            const recent7 = users.filter(u2=>u2.createdAt && (now-new Date(u2.createdAt).getTime())<7*86400000);
+            const recent24 = users.filter(u2=>u2.createdAt && (now-new Date(u2.createdAt).getTime())<86400000);
+            // Preference breakdown
+            const prefDk = users.filter(u2=>u2.pref==="dark").length;
+            const prefLt = users.filter(u2=>u2.pref==="light").length;
+            const prefNo = users.filter(u2=>u2.pref==="none"||!u2.pref).length;
+            // Target = 68 (34+34), progress
+            const TARGET = 68;
+            const progress = Math.min(completed.length/TARGET*100,100);
+
+            return <>
+              {/* ── Header ─────────────────────────────────────────────── */}
+              <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:28, flexWrap:"wrap", gap:12 }}>
+                <div>
+                  <div style={{ fontSize:12, color:u.text3, letterSpacing:1.5, textTransform:"uppercase", marginBottom:6, fontWeight:600 }}>Admin Dashboard</div>
+                  <h1 style={{ fontSize:24, fontWeight:800, color:u.text, margin:0, letterSpacing:-.5 }}>Study Overview</h1>
+                  <p style={{ color:u.text3, fontSize:13, margin:"6px 0 0" }}>Dark Mode vs Light Mode · Within-subjects HCI experiment · Real-time</p>
+                </div>
+                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  <div style={{ fontSize:11, color:supa?SIG:u.red, padding:"4px 10px", borderRadius:99, background:supa?`${SIG}10`:`${u.red}10`, border:`1px solid ${supa?SIG:u.red}25`, fontWeight:600 }}>
+                    {supa ? "● Live" : "⚠ Offline"}
+                  </div>
+                  <button onClick={refresh} style={{ height:32, padding:"0 14px", borderRadius:R.md, border:`1px solid ${u.border}`, background:u.fill, color:u.text2, fontFamily:L.font, cursor:"pointer", fontSize:12, fontWeight:500 }}>{syncing?"⟳ Syncing…":"⟳ Refresh"}</button>
+                </div>
+              </div>
+
+              {/* ── Recruitment Progress ────────────────────────────────── */}
+              <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:14, padding:"20px 24px", marginBottom:20 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", marginBottom:12, flexWrap:"wrap", gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:12, fontWeight:600, color:u.text3, textTransform:"uppercase", letterSpacing:.8 }}>Recruitment Progress</div>
+                    <div style={{ fontSize:22, fontWeight:800, color:u.text, marginTop:4 }}>
+                      {completed.length} <span style={{ fontSize:14, fontWeight:400, color:u.text3 }}>of {TARGET} target pairs</span>
                     </div>
                   </div>
+                  <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+                    {[
+                      { l:"Completed", v:completed.length, c:SIG },
+                      { l:"In Progress", v:inProg.length, c:u.orange },
+                      { l:"Registered", v:registered.length, c:u.text3 },
+                      { l:"Last 24h", v:recent24.length, c:u.teal },
+                      { l:"Last 7 days", v:recent7.length, c:u.accent },
+                    ].map(({ l,v,c }) => (
+                      <div key={l} style={{ textAlign:"center" }}>
+                        <div style={{ fontSize:20, fontWeight:700, color:c, fontFamily:L.mono }}>{v}</div>
+                        <div style={{ fontSize:10, color:u.text3, marginTop:2 }}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div style={{ height:8, background:u.fill, borderRadius:4, overflow:"hidden", marginBottom:6 }}>
+                  <div style={{ height:"100%", width:`${progress}%`, background:`linear-gradient(90deg,${SIG},${u.teal})`, borderRadius:4, transition:"width .5s" }} />
+                </div>
+                <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:u.text3 }}>
+                  <span>{progress.toFixed(1)}% complete</span>
+                  <span>{TARGET-completed.length} more pairs needed</span>
+                </div>
+              </div>
+
+              {/* ── KPI Grid ────────────────────────────────────────────── */}
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, marginBottom:20 }}>
+                {[
+                  { l:"Total Enrolled",  v:users.length,      sub:"all accounts", c:u.accent,  icon:"👥" },
+                  { l:"Paired Complete", v:completed.length,  sub:"both phases",  c:SIG,       icon:"✓"  },
+                  { l:"Total Trials",    v:allT.length.toLocaleString(), sub:"recorded",     c:u.teal,  icon:"📊" },
+                  { l:"Completion Rate", v:users.length?`${Math.round(completed.length/users.length*100)}%`:"—", sub:"enrolled→paired", c:u.green, icon:"📈" },
+                  { l:"DL Group",        v:dlN,               sub:balanced?"✓ Balanced":"⚠ Imbalanced", c:balanced?SIG:u.orange, icon:"🌙→☀️" },
+                  { l:"LD Group",        v:ldN,               sub:balanced?"✓ Balanced":"⚠ Imbalanced", c:balanced?SIG:u.orange, icon:"☀️→🌙" },
+                ].map(({ l,v,sub,c,icon }) => (
+                  <div key={l} style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:12, padding:"16px 18px", position:"relative", overflow:"hidden" }}>
+                    <div style={{ position:"absolute", top:0, left:0, right:0, height:2, background:c }} />
+                    <div style={{ fontSize:18, marginBottom:8 }}>{icon}</div>
+                    <div style={{ fontSize:22, fontWeight:800, color:c, fontFamily:L.mono, lineHeight:1 }}>{v}</div>
+                    <div style={{ fontSize:11, fontWeight:600, color:u.text2, marginTop:5, textTransform:"uppercase", letterSpacing:.6 }}>{l}</div>
+                    <div style={{ fontSize:10, color:u.text3, marginTop:2 }}>{sub}</div>
+                  </div>
                 ))}
-              </Card>
-              <Card u={u} style={{ padding: L.spLg }}>
-                <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Accuracy by Task</div>
-                <HBar u={u} data={tStats.map((ts, i) => ({ l: ts.l.split(" ")[0], v: ts.acc * 100, c: u.chart[i % u.chart.length], fmt: fmtPct(ts.acc) }))} />
-              </Card>
-            </div>
+              </div>
+
+              {/* ── Main content grid ───────────────────────────────────── */}
+              <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"1fr 1fr", gap:16, marginBottom:16 }}>
+
+                {/* Theme Performance Comparison */}
+                <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:14, padding:"20px 22px" }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:u.text, marginBottom:16 }}>Theme Performance Comparison</div>
+                  {[
+                    { l:"Accuracy", dk:dkAcc, lt:ltAcc, fmt:v=>v!=null?(v*100).toFixed(1)+"%":"—", hi:true  },
+                    { l:"Response Time", dk:dkRT, lt:ltRT, fmt:v=>v!=null?Math.round(v)+"ms":"—", hi:false },
+                    { l:"NASA Workload", dk:dkNasa, lt:ltNasa, fmt:v=>v!=null?v.toFixed(1)+"/20":"—", hi:false },
+                  ].map(({ l, dk, lt, fmt, hi }) => {
+                    const diff = dk!=null&&lt!=null ? dk-lt : null;
+                    const dkBetter = diff!=null && (hi?diff>0:diff<0);
+                    const ltBetter = diff!=null && (hi?diff<0:diff>0);
+                    return (
+                      <div key={l} style={{ marginBottom:14 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:6 }}>
+                          <span style={{ fontSize:12, color:u.text2, fontWeight:500 }}>{l}</span>
+                          {diff!=null && <span style={{ fontSize:11, color:dkBetter?DK:ltBetter?LT:u.text3, fontWeight:600 }}>{dkBetter?"Dark better":ltBetter?"Light better":"Equal"}</span>}
+                        </div>
+                        <div style={{ display:"flex", gap:8 }}>
+                          <div style={{ flex:1, padding:"8px 12px", borderRadius:8, background:`${DK}10`, border:`1px solid ${DK}20`, textAlign:"center" }}>
+                            <div style={{ fontSize:10, color:DK, marginBottom:2 }}>🌙 Dark</div>
+                            <div style={{ fontSize:15, fontWeight:700, color:DK, fontFamily:L.mono }}>{fmt(dk)}</div>
+                          </div>
+                          <div style={{ flex:1, padding:"8px 12px", borderRadius:8, background:`${LT}10`, border:`1px solid ${LT}20`, textAlign:"center" }}>
+                            <div style={{ fontSize:10, color:LT, marginBottom:2 }}>☀️ Light</div>
+                            <div style={{ fontSize:15, fontWeight:700, color:LT, fontFamily:L.mono }}>{fmt(lt)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Theme Preference + Counterbalance */}
+                <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+                  {/* Preference */}
+                  <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:14, padding:"20px 22px", flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:u.text, marginBottom:14 }}>Theme Preference</div>
+                    {[
+                      { l:"Dark Mode", v:prefDk, c:DK },
+                      { l:"Light Mode", v:prefLt, c:LT },
+                      { l:"No Preference", v:prefNo, c:u.text3 },
+                    ].map(({ l,v,c }) => {
+                      const total = prefDk+prefLt+prefNo||1;
+                      return (
+                        <div key={l} style={{ marginBottom:10 }}>
+                          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+                            <span style={{ fontSize:12, color:u.text2 }}>{l}</span>
+                            <span style={{ fontSize:12, fontWeight:600, color:c, fontFamily:L.mono }}>{v} ({(v/total*100).toFixed(0)}%)</span>
+                          </div>
+                          <div style={{ height:5, background:u.fill, borderRadius:3, overflow:"hidden" }}>
+                            <div style={{ height:"100%", width:`${v/total*100}%`, background:c, opacity:.85, borderRadius:3 }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Counterbalance */}
+                  <div style={{ background:u.bg, border:`1.5px solid ${balanced?SIG:u.orange}30`, borderRadius:14, padding:"18px 22px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:u.text }}>Counterbalance</div>
+                      <span style={{ fontSize:11, padding:"2px 8px", borderRadius:99, background:balanced?`${SIG}12`:`${u.orange}12`, color:balanced?SIG:u.orange, fontWeight:600 }}>{balanced?"✓ Balanced":"⚠ Imbalanced"}</span>
+                    </div>
+                    <div style={{ display:"flex", gap:12 }}>
+                      {[{l:"DL (Dark first)",v:dlN,c:DK},{l:"LD (Light first)",v:ldN,c:LT}].map(({l,v,c})=>(
+                        <div key={l} style={{ flex:1, textAlign:"center", padding:"10px", borderRadius:8, background:`${c}08`, border:`1px solid ${c}20` }}>
+                          <div style={{ fontSize:22, fontWeight:800, color:c, fontFamily:L.mono }}>{v}</div>
+                          <div style={{ fontSize:10, color:u.text3, marginTop:3 }}>{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {!balanced && <div style={{ marginTop:10, fontSize:11, color:u.orange }}>Need {Math.abs(dlN-ldN)} more {dlN>ldN?"LD":"DL"} participants to balance.</div>}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Accuracy by Task (full width bar chart) ─────────────── */}
+              <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:14, padding:"20px 22px", marginBottom:16 }}>
+                <div style={{ fontSize:13, fontWeight:700, color:u.text, marginBottom:4 }}>Accuracy by Task Type</div>
+                <div style={{ fontSize:11, color:u.text3, marginBottom:16 }}>Mean accuracy across all participants · Dark vs Light</div>
+                <div style={{ overflowX:"auto" }}>
+                {(() => {
+                  const tasks = tStats.filter(t=>t.n>0);
+                  if (!tasks.length) return <div style={{ color:u.text3, fontSize:13, textAlign:"center", padding:20 }}>No trial data yet</div>;
+                  const BW=20, GAP=6, GRP=16, H=100, LBL=60;
+                  const W = tasks.length*(BW*2+GAP+GRP)+LBL;
+                  return (
+                    <svg width="100%" viewBox={`0 0 ${W} ${H+28}`} style={{ minWidth:Math.min(W,500), display:"block" }}>
+                      {[0,.25,.5,.75,1].map(v=>(
+                        <g key={v}>
+                          <line x1={LBL-8} y1={H-v*H} x2={W} y2={H-v*H} stroke={u.border} strokeWidth={.5} />
+                          <text x={LBL-10} y={H-v*H+3} fontSize={8} fill={u.text3} textAnchor="end" fontFamily={L.mono}>{(v*100).toFixed(0)}%</text>
+                        </g>
+                      ))}
+                      {tasks.map((task,ti)=>{
+                        const x=LBL+ti*(BW*2+GAP+GRP);
+                        const dh=(task.dk?.acc||0)*H, lh=(task.lt?.acc||0)*H;
+                        const label=task.l.split(" ")[0];
+                        return (
+                          <g key={task.tid}>
+                            <rect x={x}       y={H-dh} width={BW} height={dh} rx={3} fill={DK} opacity={.85} />
+                            <rect x={x+BW+GAP} y={H-lh} width={BW} height={lh} rx={3} fill={LT} opacity={.85} />
+                            <text x={x+BW} y={H+13} fontSize={8} fill={u.text2} textAnchor="middle" fontFamily={L.font}>{label}</text>
+                            {/* Diff indicator */}
+                            {Math.abs(dh-lh)>5 && <line x1={x+BW/2} y1={Math.min(H-dh,H-lh)-2} x2={x+BW+GAP+BW/2} y2={Math.min(H-dh,H-lh)-2} stroke={dh>lh?DK:LT} strokeWidth={1.5} strokeDasharray="3,2" opacity={.6} />}
+                          </g>
+                        );
+                      })}
+                      <rect x={LBL} y={H+18} width={BW} height={5} rx={1} fill={DK} />
+                      <text x={LBL+BW+4} y={H+23} fontSize={9} fill={DK} fontFamily={L.font}>Dark</text>
+                      <rect x={LBL+50} y={H+18} width={BW} height={5} rx={1} fill={LT} />
+                      <text x={LBL+50+BW+4} y={H+23} fontSize={9} fill={LT} fontFamily={L.font}>Light</text>
+                    </svg>
+                  );
+                })()}
+                </div>
+              </div>
+
+              {/* ── Recent registrations ────────────────────────────────── */}
+              <div style={{ background:u.bg, border:`1px solid ${u.border}`, borderRadius:14, padding:"20px 22px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:u.text }}>Recent Participants</div>
+                  <button onClick={()=>setTab("participants")} style={{ fontSize:11, color:u.accent, background:"none", border:"none", cursor:"pointer", fontFamily:L.font, fontWeight:600 }}>View all →</button>
+                </div>
+                {users.length===0 && <div style={{ color:u.text3, fontSize:13, textAlign:"center", padding:20 }}>No participants yet</div>}
+                {[...users].sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,6).map(p=>{
+                  const sessions=(p.experiments||[]).length;
+                  const statusColor = sessions>=2?SIG:sessions===1?u.orange:u.text3;
+                  const statusLabel = sessions>=2?"Completed":sessions===1?"In Progress":"Registered";
+                  return (
+                    <div key={p.id} onClick={()=>{setSel(p);setTab("participants");}} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0", borderBottom:`1px solid ${u.border}`, cursor:"pointer" }}>
+                      <div style={{ width:34, height:34, borderRadius:9, background:sessions>=2?`${SIG}18`:u.fill, border:`1px solid ${sessions>=2?SIG:u.border}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:statusColor, flexShrink:0 }}>{p.name.slice(0,2).toUpperCase()}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:u.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{p.name}</div>
+                        <div style={{ fontSize:11, color:u.text3 }}>{p.orderGroup||"—"} · {p.dem?.gender||"—"} · Age {p.dem?.age||"—"}</div>
+                      </div>
+                      <div style={{ textAlign:"right", flexShrink:0 }}>
+                        <div style={{ fontSize:11, fontWeight:600, color:statusColor, padding:"2px 8px", borderRadius:99, background:`${statusColor}12`, border:`1px solid ${statusColor}25` }}>{statusLabel}</div>
+                        <div style={{ fontSize:10, color:u.text3, marginTop:3 }}>{p.createdAt?new Date(p.createdAt).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):"—"}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>;
+          })()}
           </div></TabErrorBoundary>
         )}
         {tab === "participants" && (
