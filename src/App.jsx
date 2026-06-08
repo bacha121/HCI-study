@@ -3463,13 +3463,17 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
   // Desktop layout — sidebar
   return (
     <div style={{ display:"flex", minHeight:"100vh", background:u.bg, fontFamily:L.font }}>
-      <div style={{ width:230, height:"100vh", background:u.sidebar, borderRight:`1px solid ${u.sidebarBorder}`, display:"flex", flexDirection:"column", padding:18, position:"sticky", top:0, flexShrink:0 }}>
-        <div style={{ marginBottom:28, display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:32, height:32, borderRadius:10, background:u.grad, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>🧠</div>
-          <div>
-            <div style={{ fontSize:L.fsMd, fontWeight:L.fwBold, color:u.text, letterSpacing:-.3 }}>CogBench</div>
-            <div style={{ fontSize:L.fsXs, color:u.text3 }}>HCI Study</div>
+      <div style={{ width:230, height:"100vh", background:u.sidebar, borderRight:`1px solid ${u.sidebarBorder}`, display:"flex", flexDirection:"column", padding:18, position:"sticky", top:0, flexShrink:0, overflowY:"auto" }}>
+        {/* Logo + theme toggle in header */}
+        <div style={{ marginBottom:28, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:32, height:32, borderRadius:10, background:u.grad, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>🧠</div>
+            <div>
+              <div style={{ fontSize:L.fsMd, fontWeight:L.fwBold, color:u.text, letterSpacing:-.3 }}>CogBench</div>
+              <div style={{ fontSize:L.fsXs, color:u.text3 }}>HCI Study</div>
+            </div>
           </div>
+          <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
         </div>
         <nav style={{ flex:1, display:"flex", flexDirection:"column", gap:3 }}>
           {nav.map(({ id, l }) => (
@@ -3483,9 +3487,6 @@ function AppShell({ user, u, uiDark, onToggleTheme, tab, setTab, onLogout, child
               <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{user.name}</div>
               <div style={{ fontSize:L.fsXs, color:u.text3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{user.email}</div>
             </div>
-          </div>
-          <div style={{ display:"flex", gap:8, marginBottom:8 }}>
-            <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
           </div>
           <button onClick={onLogout} style={{ width:"100%", height:32, borderRadius:R.md, border:`1px solid ${u.red}40`, background:`${u.red}08`, color:u.red, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm, fontWeight:L.fwSemi }}>Sign Out</button>
         </div>
@@ -5123,15 +5124,17 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
         </>
       ) : (
         <div style={{ width:230, height:"100vh", background:u.sidebar, borderRight:`1px solid ${u.sidebarBorder}`, display:"flex", flexDirection:"column", padding:18, position:"sticky", top:0, flexShrink:0, overflowY:"auto" }}>
-          <div style={{ marginBottom:24, display:"flex", alignItems:"center", gap:10 }}>
-            <div style={{ width:32, height:32, borderRadius:10, background:u.grad, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>🧠</div>
-            <div><div style={{ fontSize:L.fsMd, fontWeight:L.fwBold, color:u.text }}>CogBench</div><Badge u={u} color={u.red}>Admin</Badge></div>
+          <div style={{ marginBottom:24, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:32, height:32, borderRadius:10, background:u.grad, display:"flex", alignItems:"center", justifyContent:"center", fontSize:15 }}>🧠</div>
+              <div><div style={{ fontSize:L.fsMd, fontWeight:L.fwBold, color:u.text }}>CogBench</div><Badge u={u} color={u.red}>Admin</Badge></div>
+            </div>
+            <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
           </div>
           <nav style={{ flex:1, display:"flex", flexDirection:"column", gap:3 }}>
             {navItems.map(({ id, l }) => <button key={id} onClick={() => setTab(id)} style={{ height:36, borderRadius:R.md, border:"none", background:tab===id?`${u.accent}14`:"transparent", color:tab===id?u.accent:u.text2, fontWeight:tab===id?L.fwSemi:L.fwNorm, textAlign:"left", padding:"0 11px", fontFamily:L.font, cursor:"pointer", fontSize:L.fsBase, transition:"all .15s" }}>{l}</button>)}
           </nav>
           <div style={{ borderTop:`1px solid ${u.border}`, paddingTop:14, display:"flex", flexDirection:"column", gap:8 }}>
-            <ThemeToggle uiDark={uiDark} onToggle={onToggleTheme} u={u} />
             <button onClick={exportCSV} style={{ height:34, borderRadius:R.md, border:`1px solid ${u.accent}40`, background:`${u.accent}12`, color:u.accent, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm, fontWeight:L.fwSemi }}>↓ Export CSV</button>
             <button onClick={refresh} style={{ height:34, borderRadius:R.md, border:`1px solid ${u.border}`, background:"transparent", color:u.text3, fontFamily:L.font, cursor:"pointer", fontSize:L.fsSm }}>{syncing?"⟳ Syncing…":"⟳ Refresh"}</button>
             <div style={{ fontSize:L.fsXs, color:supa?(syncing?u.orange:u.green):u.text3, textAlign:"center" }}>
