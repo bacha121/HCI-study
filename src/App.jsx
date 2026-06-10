@@ -5197,8 +5197,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
             const prefLt = users.filter(u2=>u2.pref==="light").length;
             const prefNo = users.filter(u2=>u2.pref==="none"||!u2.pref).length;
             // Target = 68 (34+34), progress
-            const TARGET = 68;
-            const progress = Math.min(completed.length/TARGET*100,100);
+            const progress = 100; // no fixed target — show as running total
 
             return <>
               {/* ── Header ─────────────────────────────────────────────── */}
@@ -5222,7 +5221,7 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                   <div>
                     <div style={{ fontSize:12, fontWeight:600, color:u.text3, textTransform:"uppercase", letterSpacing:.8 }}>Recruitment Progress</div>
                     <div style={{ fontSize:22, fontWeight:800, color:u.text, marginTop:4 }}>
-                      {completed.length} <span style={{ fontSize:14, fontWeight:400, color:u.text3 }}>of {TARGET} target pairs</span>
+                      {completed.length} <span style={{ fontSize:14, fontWeight:400, color:u.text3 }}>paired participants completed</span>
                     </div>
                   </div>
                   <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
@@ -5245,8 +5244,8 @@ function AdminDashboard({ onLogout, u, uiDark, onToggleTheme }) {
                   <div style={{ height:"100%", width:`${progress}%`, background:`linear-gradient(90deg,${SIG},${u.teal})`, borderRadius:4, transition:"width .5s" }} />
                 </div>
                 <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:u.text3 }}>
-                  <span>{progress.toFixed(1)}% complete</span>
-                  <span>{TARGET-completed.length} more pairs needed</span>
+                  <span>{users.length} enrolled · {inProg.length} in progress · {registered.length} registered</span>
+                  <span>Ongoing recruitment — no fixed limit</span>
                 </div>
               </div>
 
