@@ -3416,12 +3416,7 @@ function Dashboard({ user, u, onStart, startingExp, onProfile, onTutorial, onRep
               </Card>
             ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: L.spMd, marginBottom: 20 }}>
-            <Card u={u} style={{ padding: L.spLg }}>
-              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Cognitive Profile</div>
-              <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Accuracy by cognitive dimension (both themes combined)</div>
-              <HBar u={u} data={[{ l:"Attention", v:stats.cog?.attention||0 }, { l:"Inhibition", v:stats.cog?.inhibition||0 }, { l:"Analysis", v:stats.cog?.analysis||0 }, { l:"Reading", v:stats.cog?.reading||0 }, { l:"Decision", v:stats.cog?.decision||0 }, { l:"Precision", v:stats.cog?.precision||0 }, { l:"Memory", v:stats.cog?.memory||0 }, { l:"Navigation", v:stats.cog?.navigation||0 }].filter(d=>d.v>0).map((d,i) => ({ l:d.l, v:d.v*100, c:u.chart[i%u.chart.length], fmt:fmtPct(d.v) }))} />
-            </Card>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: L.spMd, marginBottom: 20 }}>
             <Card u={u} style={{ padding: L.spLg }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Dark vs Light Comparison</div>
               <div style={{ display: "flex", flexDirection: "column", gap: L.spSm }}>
