@@ -1550,13 +1550,13 @@ function Sel({ u, value, onChange, opts }) {
 }
 
 // ─── CHARTS ───────────────────────────────────────────────────────────────────────
-function Radar({ u, dims, size = 180 }) {
-  const n = dims.length, cx = 100, cy = 100, r = 58;
+function Radar({ u, dims, size = 220 }) {
+  const n = dims.length, cx = 110, cy = 110, r = 68;
   const ang = i => (i / n) * 2 * Math.PI - Math.PI / 2;
   const pt = (i, v) => [cx + Math.cos(ang(i)) * v * r, cy + Math.sin(ang(i)) * v * r];
   const labelAnchor = (x) => x < cx - 4 ? "end" : x > cx + 4 ? "start" : "middle";
   return (
-    <svg width={size} height={size} viewBox="0 0 200 200" style={{ overflow: "visible" }}>
+    <svg width="100%" height="100%" viewBox="0 0 220 220" preserveAspectRatio="xMidYMid meet" style={{ maxWidth: size, display:"block", margin:"0 auto", overflow: "visible" }}>
       {[.25,.5,.75,1].map(f => <polygon key={f} points={dims.map((_, i) => pt(i, f).join(",")).join(" ")} fill="none" stroke={u.border2} strokeWidth={.7} opacity={.6} />)}
       {dims.map((_, i) => { const p = pt(i, 1); return <line key={i} x1={cx} y1={cy} x2={p[0]} y2={p[1]} stroke={u.border2} strokeWidth={.7} />; })}
       <polygon points={dims.map((d, i) => pt(i, d.v).join(",")).join(" ")} fill={`${u.accent}28`} stroke={u.accent} strokeWidth={2} strokeLinejoin="round" />
@@ -2930,9 +2930,9 @@ function PatternsTab({ user, u }) {
 
       {/* Best theme + radar */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:L.spMd, marginBottom:20, alignItems:"start" }}>
-        <Card u={u} style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:L.spLg }}>
-          <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>Cognitive Radar</div>
-          <div style={{ marginBottom:8 }}><Radar u={u} dims={dims} size={200} /></div>
+        <Card u={u} style={{ display:"flex", flexDirection:"column", padding:L.spLg }}>
+          <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd, textAlign:"center" }}>Cognitive Radar</div>
+          <div style={{ width:"100%", maxWidth:320, margin:"0 auto", paddingBottom:8 }}><Radar u={u} dims={dims} size={320} /></div>
           <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spMd, textAlign:"center", lineHeight:1.5 }}>Each axis shows accuracy on the corresponding task type, combining both theme conditions.</div>
         </Card>
         <div style={{ display:"flex", flexDirection:"column", gap:L.spMd }}>
@@ -3417,23 +3417,23 @@ function Dashboard({ user, u, onStart, startingExp, onProfile, onTutorial, onRep
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: L.spMd, marginBottom: 20 }}>
-            <Card u={u} style={{ padding: L.spLg, display: "flex", flexDirection: "column", alignItems: "center" }}>
-              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Cognitive Profile</div>
-              <div style={{ marginBottom: 8 }}>
-                <Radar u={u} dims={[{ l:"Attention", v:stats.cog?.attention||0 }, { l:"Inhibition", v:stats.cog?.inhibition||0 }, { l:"Analysis", v:stats.cog?.analysis||0 }, { l:"Reading", v:stats.cog?.reading||0 }, { l:"Decision", v:stats.cog?.decision||0 }, { l:"Precision", v:stats.cog?.precision||0 }, { l:"Memory", v:stats.cog?.memory||0 }, { l:"Navigation", v:stats.cog?.navigation||0 }]} size={180} />
+            <Card u={u} style={{ padding: L.spLg, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd, textAlign:"center" }}>Cognitive Profile</div>
+              <div style={{ width:"100%", maxWidth:300, margin:"0 auto", paddingBottom:8 }}>
+                <Radar u={u} dims={[{ l:"Attention", v:stats.cog?.attention||0 }, { l:"Inhibition", v:stats.cog?.inhibition||0 }, { l:"Analysis", v:stats.cog?.analysis||0 }, { l:"Reading", v:stats.cog?.reading||0 }, { l:"Decision", v:stats.cog?.decision||0 }, { l:"Precision", v:stats.cog?.precision||0 }, { l:"Memory", v:stats.cog?.memory||0 }, { l:"Navigation", v:stats.cog?.navigation||0 }]} size={300} />
               </div>
             </Card>
             <Card u={u} style={{ padding: L.spLg }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Dark vs Light Comparison</div>
               <div style={{ display: "flex", flexDirection: "column", gap: L.spSm }}>
-                {[{ l:"Accuracy", d:fmtPct(stats.accDk), li:fmtPct(stats.accLt) }, { l:"Mental Effort", d:fmt(stats.efDk), li:fmt(stats.efLt) }, { l:"Avg RT", d:fmtMs(stats.rtDk), li:fmtMs(stats.rtLt) }].map(({ l, d, li }) => (
-                  <div key={l} style={{ display:"flex", alignItems:"center", gap:L.spSm }}>
-                    <div style={{ fontSize: L.fsXs, color: u.text3, width:74, flexShrink:0 }}>{l}</div>
-                    <div style={{ display:"flex", gap:6, flex:1, minWidth:0 }}>
+                {[{ l:"Accuracy", d:fmtPct(stats.accDk), li:fmtPct(stats.accLt) }, { l:"Mental Effort", d:fmt(stats.efDk), li:fmt(stats.efLt) }, { l:"Avg Response Time", d:fmtMs(stats.rtDk), li:fmtMs(stats.rtLt) }].map(({ l, d, li }) => (
+                  <div key={l}>
+                    <div style={{ fontSize: L.fsXs, color: u.text3, marginBottom: 4 }}>{l}</div>
+                    <div style={{ display:"flex", gap:6 }}>
                       {[{ lbl:"🌙", val:d, c:u.accent2 }, { lbl:"☀️", val:li, c:u.gold }].map(({ lbl, val, c }) => (
-                        <div key={lbl} style={{ flex:1, minWidth:0, padding: "5px 4px", borderRadius: R.md, background: `${c}12`, border: `1px solid ${c}22`, textAlign: "center", overflow:"hidden" }}>
-                          <div style={{ fontSize: L.fsXs, color: u.text3 }}>{lbl}</div>
-                          <div style={{ fontSize: 12, fontWeight: L.fwBold, color: c, whiteSpace:"nowrap" }}>{val}</div>
+                        <div key={lbl} style={{ flex:1, minWidth:0, padding: "6px 8px", borderRadius: R.md, background: `${c}12`, border: `1px solid ${c}22`, textAlign: "center", overflow:"hidden", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                          <span style={{ fontSize: 13 }}>{lbl}</span>
+                          <span style={{ fontSize: L.fsSm, fontWeight: L.fwBold, color: c, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{val}</span>
                         </div>
                       ))}
                     </div>
