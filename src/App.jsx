@@ -6417,10 +6417,10 @@ export default function App() {
     <><style>{GCSS}</style><TimeoutOverlay />
       <ExpPage>
         <div style={{ maxWidth: L.taskW, margin: "0 auto", textAlign: "center", fontFamily: L.font }}>
-          <div style={{ fontSize: L.fsXs, color: t.textFaint, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: L.spMd }}>Task {taskIdx + 1} of {totalTasks}</div>
+          <div style={{ fontSize: L.fsXs, color: t.textMuted, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: L.spMd }}>Task {taskIdx + 1} of {totalTasks}</div>
           <h2 style={{ fontSize: L.fsXl, fontWeight: L.fwBold, color: t.text, margin: `0 0 ${L.spMd}px`, letterSpacing: -.5 }}>{CFG.TL[curType]}</h2>
-          <p style={{ color: t.textMuted, fontSize: L.fsMd, maxWidth: 420, margin: `0 auto ${L.spXl}px`, lineHeight: 1.7 }}>{CFG.TD[curType]}</p>
-          <div style={{ display: "inline-block", padding: `${L.spSm}px ${L.spLg}px`, borderRadius: R.pill, background: t.surface, border: `1px solid ${t.border}`, fontSize: L.fsSm, color: t.textFaint, marginBottom: L.spXl }}>
+          <p style={{ color: t.text, opacity: 0.85, fontSize: L.fsMd, maxWidth: 420, margin: `0 auto ${L.spXl}px`, lineHeight: 1.7 }}>{CFG.TD[curType]}</p>
+          <div style={{ display: "inline-block", padding: `${L.spSm}px ${L.spLg}px`, borderRadius: R.pill, background: t.surface, border: `1px solid ${t.border}`, fontSize: L.fsSm, color: t.textMuted, marginBottom: L.spXl }}>
             {CFG.TN[curType]} trial{CFG.TN[curType] !== 1 ? "s" : ""} · {curTheme} theme{CFG.RT.includes(curType) ? " · RT measured" : ""}
           </div>
           <div>
