@@ -2886,7 +2886,7 @@ function ProfilePage({ user, u, onSave }) {
             </div>
             {bothDone && (
               <div style={{ marginTop:L.spMd, padding:`${L.spSm}px ${L.spMd}px`, background:u.gradSoft, borderRadius:R.md, border:`1px solid ${u.accent}20`, fontSize:L.fsXs, color:u.text2 }}>
-                Thank you for completing both phases. Your responses contribute to a 68-participant within-subjects dataset comparing cognitive load, task performance, and visual comfort across dark and light interface themes.
+                Thank you for completing both phases. Your responses contribute to a growing within-subjects dataset comparing cognitive load, task performance, and visual comfort across dark and light interface themes.
               </div>
             )}
           </Card>
@@ -2911,8 +2911,10 @@ function PatternsTab({ user, u }) {
 
   // Strongest / weakest cognitive dimension (with at least 1 trial recorded)
   const scored = dims.filter(d => (stats.tperf?.[d.task]?.n || 0) > 0);
-  const strongest = scored.length ? scored.reduce((a,b) => b.v > a.v ? b : a) : null;
-  const weakest   = scored.length ? scored.reduce((a,b) => b.v < a.v ? b : a) : null;
+  const sorted = [...scored].sort((a,b) => b.v - a.v);
+  const strongest = sorted[0] || null;
+  const weakest   = sorted.length > 1 ? sorted[sorted.length-1] : null;
+  const singleDim = sorted.length === 1;
 
   // Accuracy gap between themes — used to express confidence in "Best Theme"
   const accGap = (stats.accDk!=null && stats.accLt!=null) ? Math.abs(stats.accDk - stats.accLt) : null;
@@ -2922,30 +2924,25 @@ function PatternsTab({ user, u }) {
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
       <SectionHdr u={u} eyebrow="Results" title="Cognitive Patterns" sub="A profile of your performance across eight cognitive task types, compared between dark and light interface themes." />
 
-      {strongest && weakest && (
+      {strongest && (
         <InsightBanner u={u} icon="🧭" label="Your Cognitive Profile" color={u.accent}
-          title={`Strongest in ${strongest.l} (${fmtPct(strongest.v)}), relatively weaker in ${weakest.l} (${fmtPct(weakest.v)})`}
+          title={singleDim
+            ? `${strongest.l} accuracy: ${fmtPct(strongest.v)}`
+            : `Strongest in ${strongest.l} (${fmtPct(strongest.v)}), relatively weaker in ${weakest.l} (${fmtPct(weakest.v)})`}
           body={`This profile reflects accuracy across both themes combined. ${stats.betterTheme==="dark"?"🌙 Dark mode":"☀️ Light mode"} produced ${gapLabel} overall advantage for you (accuracy gap: ${accGap!=null?fmtPct(accGap):"—"}), based on accuracy, speed, errors, workload, eye strain, fatigue, comfort and satisfaction across both sessions.`} />
       )}
 
-      {/* Best theme + radar */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:L.spMd, marginBottom:20, alignItems:"start" }}>
-        <Card u={u} style={{ display:"flex", flexDirection:"column", padding:L.spLg }}>
-          <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd, textAlign:"center" }}>Cognitive Radar</div>
-          <div style={{ width:"100%", maxWidth:320, margin:"0 auto", paddingBottom:8 }}><Radar u={u} dims={dims} size={320} /></div>
-          <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spMd, textAlign:"center", lineHeight:1.5 }}>Each axis shows accuracy on the corresponding task type, combining both theme conditions.</div>
+      {/* Best theme + dimension chart */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))", gap:L.spMd, marginBottom:20, alignItems:"start" }}>
+        <Card u={u} style={{ padding:L.spMd, background:u.gradSoft, border:`1px solid ${u.accent}20` }}>
+          <div style={{ fontSize:L.fsXs, color:u.accent, letterSpacing:1, textTransform:"uppercase", marginBottom:4 }}>Best Theme for You</div>
+          <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:u.text, textTransform:"capitalize" }}>{stats.betterTheme} Mode</div>
+          <div style={{ fontSize:L.fsSm, color:u.text2, marginTop:4 }}>Based on accuracy, speed, errors, workload, eye strain, fatigue, comfort and satisfaction</div>
         </Card>
-        <div style={{ display:"flex", flexDirection:"column", gap:L.spMd }}>
-          <Card u={u} style={{ padding:L.spMd, background:u.gradSoft, border:`1px solid ${u.accent}20` }}>
-            <div style={{ fontSize:L.fsXs, color:u.accent, letterSpacing:1, textTransform:"uppercase", marginBottom:4 }}>Best Theme for You</div>
-            <div style={{ fontSize:L.fsLg, fontWeight:L.fwBold, color:u.text, textTransform:"capitalize" }}>{stats.betterTheme} Mode</div>
-            <div style={{ fontSize:L.fsSm, color:u.text2, marginTop:4 }}>Based on accuracy, speed, errors, workload, eye strain, fatigue, comfort and satisfaction</div>
-          </Card>
-          <Card u={u} style={{ padding:L.spLg }}>
-            <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd, letterSpacing:.3 }}>Accuracy by cognitive dimension</div>
-            <HBar u={u} data={dims.map((d,i) => ({ l:d.l, v:d.v*100, c:u.chart[i%u.chart.length], fmt:fmtPct(d.v) }))} />
-          </Card>
-        </div>
+        <Card u={u} style={{ padding:L.spLg, gridColumn:"span 2" }}>
+          <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd, letterSpacing:.3 }}>Accuracy by cognitive dimension</div>
+          <HBar u={u} data={dims.filter(d=>(stats.tperf?.[d.task]?.n||0)>0).map((d,i) => ({ l:d.l, v:d.v*100, c:u.chart[i%u.chart.length], fmt:fmtPct(d.v) }))} />
+        </Card>
       </div>
 
       {/* Per-task grid with theme comparison */}
@@ -3417,11 +3414,10 @@ function Dashboard({ user, u, onStart, startingExp, onProfile, onTutorial, onRep
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(200px,1fr))", gap: L.spMd, marginBottom: 20 }}>
-            <Card u={u} style={{ padding: L.spLg, display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd, textAlign:"center" }}>Cognitive Profile</div>
-              <div style={{ width:"100%", maxWidth:300, margin:"0 auto", paddingBottom:8 }}>
-                <Radar u={u} dims={[{ l:"Attention", v:stats.cog?.attention||0 }, { l:"Inhibition", v:stats.cog?.inhibition||0 }, { l:"Analysis", v:stats.cog?.analysis||0 }, { l:"Reading", v:stats.cog?.reading||0 }, { l:"Decision", v:stats.cog?.decision||0 }, { l:"Precision", v:stats.cog?.precision||0 }, { l:"Memory", v:stats.cog?.memory||0 }, { l:"Navigation", v:stats.cog?.navigation||0 }]} size={300} />
-              </div>
+            <Card u={u} style={{ padding: L.spLg }}>
+              <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Cognitive Profile</div>
+              <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd }}>Accuracy by cognitive dimension (both themes combined)</div>
+              <HBar u={u} data={[{ l:"Attention", v:stats.cog?.attention||0 }, { l:"Inhibition", v:stats.cog?.inhibition||0 }, { l:"Analysis", v:stats.cog?.analysis||0 }, { l:"Reading", v:stats.cog?.reading||0 }, { l:"Decision", v:stats.cog?.decision||0 }, { l:"Precision", v:stats.cog?.precision||0 }, { l:"Memory", v:stats.cog?.memory||0 }, { l:"Navigation", v:stats.cog?.navigation||0 }].filter(d=>d.v>0).map((d,i) => ({ l:d.l, v:d.v*100, c:u.chart[i%u.chart.length], fmt:fmtPct(d.v) }))} />
             </Card>
             <Card u={u} style={{ padding: L.spLg }}>
               <div style={{ fontSize: L.fsSm, fontWeight: L.fwSemi, color: u.text, marginBottom: L.spMd }}>Dark vs Light Comparison</div>
