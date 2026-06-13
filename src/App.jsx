@@ -2914,6 +2914,7 @@ function PatternsTab({ user, u }) {
   const sorted = [...scored].sort((a,b) => b.v - a.v);
   const strongest = sorted[0] || null;
   const weakest   = sorted.length > 1 ? sorted[sorted.length-1] : null;
+  const allTied   = sorted.length > 1 && Math.abs(strongest.v - weakest.v) < 0.005;
   const singleDim = sorted.length === 1;
 
   // Accuracy gap between themes — used to express confidence in "Best Theme"
@@ -2928,7 +2929,9 @@ function PatternsTab({ user, u }) {
         <InsightBanner u={u} icon="🧭" label="Your Cognitive Profile" color={u.accent}
           title={singleDim
             ? `${strongest.l} accuracy: ${fmtPct(strongest.v)}`
-            : `Strongest in ${strongest.l} (${fmtPct(strongest.v)}), relatively weaker in ${weakest.l} (${fmtPct(weakest.v)})`}
+            : allTied
+              ? `Consistent ${fmtPct(strongest.v)} accuracy across ${sorted.map(d=>d.l).join(", ")}`
+              : `Strongest in ${strongest.l} (${fmtPct(strongest.v)}), relatively weaker in ${weakest.l} (${fmtPct(weakest.v)})`}
           body={`This profile reflects accuracy across both themes combined. ${stats.betterTheme==="dark"?"🌙 Dark mode":"☀️ Light mode"} produced ${gapLabel} overall advantage for you (accuracy gap: ${accGap!=null?fmtPct(accGap):"—"}), based on accuracy, speed, errors, workload, eye strain, fatigue, comfort and satisfaction across both sessions.`} />
       )}
 
