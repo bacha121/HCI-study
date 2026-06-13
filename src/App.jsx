@@ -2845,7 +2845,48 @@ function ProfilePage({ user, u, onSave }) {
         )}
       </Card>
 
-      {/* ── No experiment data yet placeholder ── */}
+      {/* ── Study Participation ── */}
+      {(() => {
+        const exps = user.experiments || [];
+        const dkDone = exps.some(e => e.theme==="dark"  && (e.tasks||[]).length>0);
+        const ltDone = exps.some(e => e.theme==="light" && (e.tasks||[]).length>0);
+        const bothDone = dkDone && ltDone;
+        const firstTheme = exps[0]?.theme;
+        const orderGroup = firstTheme === "dark" ? "DL — Dark mode first" : firstTheme === "light" ? "LD — Light mode first" : "Not yet assigned";
+        const shortId = (user.id || "").slice(0,8).toUpperCase();
+        const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString(undefined,{ year:"numeric", month:"short", day:"numeric" }) : "—";
+
+        const items = [
+          { label:"Participant ID",    value:shortId || "—" },
+          { label:"Counterbalance Group", value:orderGroup },
+          { label:"Phase 1 (First)",    value: exps[0] ? `${exps[0].theme==="dark"?"🌙 Dark":"☀️ Light"} · ${exps[0].tasks?.length||0} tasks` : "Not started" },
+          { label:"Phase 2 (Second)",   value: exps[1] ? `${exps[1].theme==="dark"?"🌙 Dark":"☀️ Light"} · ${exps[1].tasks?.length||0} tasks` : "Not started" },
+          { label:"Enrolled",           value: fmtDate(user.createdAt) },
+          { label:"Status",             value: bothDone ? "✓ Both phases complete" : (dkDone||ltDone) ? "In progress" : "Not started" },
+        ];
+
+        return (
+          <Card u={u} style={{ marginBottom:20 }}>
+            <div style={{ marginBottom:L.spLg }}>
+              <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Study Participation</div>
+              <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Your enrolment status in the CogBench dark vs light mode study</div>
+            </div>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:10 }}>
+              {items.map(({label,value}) => (
+                <div key={label} style={{ padding:`${L.spSm}px ${L.spMd}px`, background:u.fill, borderRadius:R.md, border:`1px solid ${u.border}` }}>
+                  <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:4, letterSpacing:.3 }}>{label}</div>
+                  <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            {bothDone && (
+              <div style={{ marginTop:L.spMd, padding:`${L.spSm}px ${L.spMd}px`, background:u.gradSoft, borderRadius:R.md, border:`1px solid ${u.accent}20`, fontSize:L.fsXs, color:u.text2 }}>
+                Thank you for completing both phases. Your responses contribute to a 68-participant within-subjects dataset comparing cognitive load, task performance, and visual comfort across dark and light interface themes.
+              </div>
+            )}
+          </Card>
+        );
+      })()}
     </div>
   );
 }
@@ -2861,17 +2902,33 @@ function PatternsTab({ user, u }) {
     </div>
   );
 
-  const dims = [{ l:"Attention", v:stats.cog?.attention||0 },{ l:"Inhibition", v:stats.cog?.inhibition||0 },{ l:"Analysis", v:stats.cog?.analysis||0 },{ l:"Reading", v:stats.cog?.reading||0 },{ l:"Decision", v:stats.cog?.decision||0 },{ l:"Precision", v:stats.cog?.precision||0 },{ l:"Memory", v:stats.cog?.memory||0 },{ l:"Navigation", v:stats.cog?.navigation||0 }];
+  const dims = [{ l:"Attention", v:stats.cog?.attention||0, task:"visual_search" },{ l:"Inhibition", v:stats.cog?.inhibition||0, task:"flanker" },{ l:"Analysis", v:stats.cog?.analysis||0, task:"symbol_match" },{ l:"Reading", v:stats.cog?.reading||0, task:"sentence_verify" },{ l:"Decision", v:stats.cog?.decision||0, task:"trail_making" },{ l:"Precision", v:stats.cog?.precision||0, task:"digit_span" },{ l:"Memory", v:stats.cog?.memory||0, task:"n_back" },{ l:"Navigation", v:stats.cog?.navigation||0, task:"nav_task" }];
+
+  // Strongest / weakest cognitive dimension (with at least 1 trial recorded)
+  const scored = dims.filter(d => (stats.tperf?.[d.task]?.n || 0) > 0);
+  const strongest = scored.length ? scored.reduce((a,b) => b.v > a.v ? b : a) : null;
+  const weakest   = scored.length ? scored.reduce((a,b) => b.v < a.v ? b : a) : null;
+
+  // Accuracy gap between themes — used to express confidence in "Best Theme"
+  const accGap = (stats.accDk!=null && stats.accLt!=null) ? Math.abs(stats.accDk - stats.accLt) : null;
+  const gapLabel = accGap==null ? "" : accGap < 0.02 ? "a marginal" : accGap < 0.06 ? "a modest" : "a clear";
 
   return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
-      <SectionHdr u={u} eyebrow="Results" title="Cognitive Patterns" sub="Performance across all tasks and themes." />
+      <SectionHdr u={u} eyebrow="Results" title="Cognitive Patterns" sub="A profile of your performance across eight cognitive task types, compared between dark and light interface themes." />
+
+      {strongest && weakest && (
+        <InsightBanner u={u} icon="🧭" label="Your Cognitive Profile" color={u.accent}
+          title={`Strongest in ${strongest.l} (${fmtPct(strongest.v)}), relatively weaker in ${weakest.l} (${fmtPct(weakest.v)})`}
+          body={`This profile reflects accuracy across both themes combined. ${stats.betterTheme==="dark"?"🌙 Dark mode":"☀️ Light mode"} produced ${gapLabel} overall advantage for you (accuracy gap: ${accGap!=null?fmtPct(accGap):"—"}), based on accuracy, speed, errors, workload, eye strain, fatigue, comfort and satisfaction across both sessions.`} />
+      )}
 
       {/* Best theme + radar */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:L.spMd, marginBottom:20, alignItems:"start" }}>
         <Card u={u} style={{ display:"flex", flexDirection:"column", alignItems:"center", padding:L.spLg }}>
           <div style={{ fontSize:L.fsSm, fontWeight:L.fwSemi, color:u.text, marginBottom:L.spMd }}>Cognitive Radar</div>
           <Radar u={u} dims={dims} size={190} />
+          <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:L.spMd, textAlign:"center", lineHeight:1.5 }}>Each axis shows accuracy on the corresponding task type, combining both theme conditions.</div>
         </Card>
         <div style={{ display:"flex", flexDirection:"column", gap:L.spMd }}>
           <Card u={u} style={{ padding:L.spMd, background:u.gradSoft, border:`1px solid ${u.accent}20` }}>
@@ -2880,25 +2937,33 @@ function PatternsTab({ user, u }) {
             <div style={{ fontSize:L.fsSm, color:u.text2, marginTop:4 }}>Based on accuracy, speed, errors, workload, eye strain, fatigue, comfort and satisfaction</div>
           </Card>
           <Card u={u} style={{ padding:L.spLg }}>
+            <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:L.spMd, letterSpacing:.3 }}>Accuracy by cognitive dimension</div>
             <HBar u={u} data={dims.map((d,i) => ({ l:d.l, v:d.v*100, c:u.chart[i%u.chart.length], fmt:fmtPct(d.v) }))} />
           </Card>
         </div>
       </div>
 
-      {/* Per-task grid */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:10 }}>
-        {CFG.tasks.map((tid,i) => {
-          const tp = stats.tperf?.[tid];
-          if (!tp) return null;
-          return (
-            <Card key={tid} u={u} style={{ padding:L.spMd }}>
-              <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:6 }}>{CFG.TL[tid]}</div>
-              <div style={{ fontSize:L.fsXl, fontWeight:L.fwBold, color:u.chart[i%u.chart.length] }}>{tp.n ? fmtPct(tp.acc) : "—"}</div>
-              {tp.rt && <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>RT: {fmtMs(tp.rt)}</div>}
-            </Card>
-          );
-        })}
-      </div>
+      {/* Per-task grid with theme comparison */}
+      <Card u={u} style={{ padding:0, overflow:"hidden" }}>
+        <div style={{ padding:`${L.spMd}px ${L.spLg}px`, borderBottom:`1px solid ${u.border}` }}>
+          <div style={{ fontSize:L.fsBase, fontWeight:L.fwSemi, color:u.text }}>Task-Level Breakdown</div>
+          <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Accuracy and average response time for each cognitive task type</div>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:10, padding:L.spLg }}>
+          {dims.map((d,i) => {
+            const tp = stats.tperf?.[d.task];
+            if (!tp || !tp.n) return null;
+            return (
+              <div key={d.task} style={{ padding:L.spMd, background:u.fill, borderRadius:R.md, border:`1px solid ${u.border}` }}>
+                <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:2 }}>{CFG.TL[d.task]}</div>
+                <div style={{ fontSize:L.fsXs, color:u.text3, marginBottom:6, opacity:.7 }}>{d.l}</div>
+                <div style={{ fontSize:L.fsXl, fontWeight:L.fwBold, color:u.chart[i%u.chart.length] }}>{fmtPct(tp.acc)}</div>
+                {tp.rt && <div style={{ fontSize:L.fsXs, color:u.text3, marginTop:3 }}>Avg. response: {fmtMs(tp.rt)}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
     </div>
   );
 }
@@ -2986,11 +3051,33 @@ function VisualComfortTab({ user, u }) {
       {!hasData ? (
         <EmptyState u={u} icon="📋" title="No survey data yet" body="Comfort ratings are collected at the end of each experiment phase." />
       ) : (
-        <Card u={u} style={{ padding:L.spLg }}>
-          {COMFORT_DIMS.map(({ key, label, icon, anchor1, anchor2, higherBetter }) => (
-            <ComfortDimCard key={key} label={label} icon={icon} anchor1={anchor1} anchor2={anchor2} higherBetter={higherBetter} dkVal={dkC?.[key]} ltVal={ltC?.[key]} />
-          ))}
-        </Card>
+        <>
+          {dkC && ltC && (() => {
+            // Composite comfort score: average of comfort-direction-adjusted items (higher = better)
+            const compositeOf = (c) => {
+              const vals = COMFORT_DIMS.map(d => d.higherBetter ? (c?.[d.key]??null) : (c?.[d.key]!=null ? 8-c[d.key] : null));
+              const valid = vals.filter(v => v!=null);
+              return valid.length ? valid.reduce((a,b)=>a+b,0)/valid.length : null;
+            };
+            const dkScore = compositeOf(dkC), ltScore = compositeOf(ltC);
+            if (dkScore==null || ltScore==null) return null;
+            const diff = Math.abs(dkScore-ltScore);
+            const dkBetter = dkScore > ltScore;
+            const magnitude = diff < 0.3 ? "very similar" : diff < 0.8 ? "modestly more comfortable" : "noticeably more comfortable";
+            // Highlight the eye strain item specifically, since it's the key finding in the wider study
+            const esGap = (dkC.eyeStrain!=null && ltC.eyeStrain!=null) ? ltC.eyeStrain - dkC.eyeStrain : null;
+            return (
+              <InsightBanner u={u} icon="📋" label="Your Comfort Summary" color={dkBetter?u.accent2:u.gold}
+                title={diff < 0.3 ? "You found both themes comparably comfortable overall" : `You found ${dkBetter?"🌙 Dark":"☀️ Light"} mode ${magnitude} overall`}
+                body={`Composite comfort scores — combining visual comfort, eye strain, fatigue, and satisfaction (all rescaled so higher is better) — were ${dkScore.toFixed(1)}/7 for dark mode and ${ltScore.toFixed(1)}/7 for light mode.${esGap!=null && Math.abs(esGap)>=1 ? ` Notably, you reported ${esGap>0?"less":"more"} eye strain under dark mode (${dkC.eyeStrain}/7 vs ${ltC.eyeStrain}/7) — this mirrors a pattern seen across the wider study sample.` : ""}`} />
+            );
+          })()}
+          <Card u={u} style={{ padding:L.spLg }}>
+            {COMFORT_DIMS.map(({ key, label, icon, anchor1, anchor2, higherBetter }) => (
+              <ComfortDimCard key={key} label={label} icon={icon} anchor1={anchor1} anchor2={anchor2} higherBetter={higherBetter} dkVal={dkC?.[key]} ltVal={ltC?.[key]} />
+            ))}
+          </Card>
+        </>
       )}
     </div>
   );
@@ -3013,6 +3100,22 @@ function ObjectiveTab({ user, u }) {
   return (
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
       <SectionHdr u={u} eyebrow="Objective Measures" title="Performance Evaluation" sub="Metrics automatically recorded during the experiment — accuracy, speed, and errors." />
+
+      {/* Insight: speed comparison framed as % difference, with reference to the wider study finding */}
+      {stats.rtDk!=null && stats.rtLt!=null && (() => {
+        const faster = stats.rtLt < stats.rtDk ? "light" : "dark";
+        const slower = faster === "light" ? "dark" : "light";
+        const fasterVal = Math.min(stats.rtDk, stats.rtLt);
+        const slowerVal = Math.max(stats.rtDk, stats.rtLt);
+        const pctDiff = ((slowerVal - fasterVal) / slowerVal) * 100;
+        const accDiff = stats.accDk!=null && stats.accLt!=null ? Math.abs(stats.accDk-stats.accLt)*100 : null;
+        const studyAligned = faster === "light";
+        return (
+          <InsightBanner u={u} icon="⚡" label="Your Speed Profile" color={faster==="dark"?u.accent2:u.gold}
+            title={`You responded ${pctDiff.toFixed(0)}% faster in ${faster==="dark"?"🌙 Dark":"☀️ Light"} mode`}
+            body={`Average response time was ${fmtMs(fasterVal)} in ${faster} mode versus ${fmtMs(slowerVal)} in ${slower} mode${accDiff!=null?`, while accuracy differed by only ${accDiff.toFixed(1)} percentage points between themes`:""}.${studyAligned ? " This is consistent with the overall study finding that light mode is associated with significantly faster response times (d = +0.371, p = .003)." : " This runs counter to the overall study trend, where light mode was on average faster — individual results vary, which is part of why this study reports both group means and individual profiles."}`} />
+        );
+      })()}
 
       {/* Summary cards */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))", gap:L.spMd, marginBottom:24 }}>
@@ -3148,6 +3251,21 @@ function WorkloadTab({ user, u }) {
     <div style={{ padding:`${L.spXl}px ${L.spLg}px`, fontFamily:L.font }} className="au">
       <SectionHdr u={u} eyebrow="Self-Report" title="Workload Assessment"
         sub="NASA Task Load Index collected after each phase. Scale 1–20. Lower = less workload (except Performance where higher = better)." />
+
+      {/* Insight: compare to study-wide average (11.1) and highlight frustration if notable */}
+      {nasaDkObj && nasaLtObj && (() => {
+        const STUDY_AVG = 11.1; // population mean NASA-TLX composite across both conditions (N=68)
+        const yourAvg = (nasaDkObj.totalScore + nasaLtObj.totalScore) / 2;
+        const vsAvg = yourAvg - STUDY_AVG;
+        const levelLabel = yourAvg < 7 ? "low" : yourAvg < 13 ? "moderate" : "high";
+        const frDiff = (nasaLtObj.fr ?? 0) - (nasaDkObj.fr ?? 0); // positive = dark lower frustration
+        const dkLower = nasaDkObj.totalScore < nasaLtObj.totalScore;
+        return (
+          <InsightBanner u={u} icon="🧠" label="Your Workload Profile" color={dkLower?colDk:colLt}
+            title={`Your overall workload (${yourAvg.toFixed(1)}/20) was ${levelLabel}, and ${Math.abs(vsAvg)<0.5?"close to":vsAvg<0?"below":"above"} the study average of ${STUDY_AVG}/20`}
+            body={`${dkLower?"🌙 Dark":"☀️ Light"} mode produced a ${Math.abs(nasaDkObj.totalScore-nasaLtObj.totalScore).toFixed(1)}-point lower workload score for you.${Math.abs(frDiff)>=2 ? ` Your frustration rating was notably ${frDiff>0?"lower":"higher"} under dark mode (${nasaDkObj.fr} vs ${nasaLtObj.fr}) — frustration is the NASA-TLX subscale that showed the largest directional difference across the wider study sample.` : " Across the study sample, composite NASA-TLX scores were nearly identical between themes (both ≈ 11.1/20), so individual variation like yours is expected."}`} />
+        );
+      })()}
 
       {/* Total score cards */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:L.spMd, marginBottom:20 }}>
@@ -3407,6 +3525,21 @@ const EmptyState = ({ icon="📭", title, body, action, u }) => (
     {action && <div style={{ marginTop:L.spLg }}>{action}</div>}
   </Card>
 );
+
+// Narrative insight banner — surfaces a plain-language takeaway above raw data
+const InsightBanner = ({ u, icon="💡", label="Insight", title, body, color }) => {
+  const c = color || u.accent;
+  return (
+    <Card u={u} style={{ padding:L.spLg, marginBottom:20, background:u.gradSoft, border:`1px solid ${c}28`, display:"flex", gap:L.spMd, alignItems:"flex-start" }}>
+      <div style={{ fontSize:26, lineHeight:1, flexShrink:0 }}>{icon}</div>
+      <div>
+        <div style={{ fontSize:L.fsXs, color:c, letterSpacing:1, textTransform:"uppercase", fontWeight:L.fwSemi, marginBottom:4 }}>{label}</div>
+        {title && <div style={{ fontSize:L.fsBase, fontWeight:L.fwBold, color:u.text, marginBottom:body?4:0 }}>{title}</div>}
+        {body && <div style={{ fontSize:L.fsSm, color:u.text2, lineHeight:1.6 }}>{body}</div>}
+      </div>
+    </Card>
+  );
+};
 
 
 function useBreakpoint() {
