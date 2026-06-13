@@ -21,6 +21,7 @@ input[type=range]{accent-color:#4f8ef7;cursor:pointer;width:100%;}
 .hover-lift:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(0,0,0,0.18);}
 .live-dot{animation:livePulse 2s ease-in-out infinite;}
 @media print{
+  @page{ margin:16mm 14mm; size:A4; }
   .no-print{display:none !important;}
   .print-break{break-before:page;}
   body{background:white !important; margin:0 !important;}
@@ -4861,6 +4862,22 @@ function ReportScreen({ user, u, onBack }) {
     { k:"ef", l:"Effort"          }, { k:"fr", l:"Frustration"     },
   ];
 
+  // Formal theme labels — used instead of emoji throughout the printed report
+  const DK_COL = "#1D4ED8", LT_COL = "#B45309";
+  const ThemeTag = ({ theme, size=11 }) => {
+    const isDark = theme === "dark";
+    const c = isDark ? DK_COL : LT_COL;
+    return (
+      <span style={{ display:"inline-flex", alignItems:"center", gap:5, fontSize:size, fontWeight:700, color:c, letterSpacing:.3 }}>
+        <span style={{ width:8, height:8, borderRadius:2, background:c, display:"inline-block", flexShrink:0 }} />
+        {isDark ? "Dark" : "Light"}
+      </span>
+    );
+  };
+
+  const reportId = (user.id || "").slice(0,8).toUpperCase();
+  const generatedStr = new Date().toLocaleString("en-GB", { day:"numeric", month:"long", year:"numeric", hour:"2-digit", minute:"2-digit" });
+
   return (
     <div style={{ fontFamily:"'DM Sans',system-ui,sans-serif", background:"#fff", minHeight:"100vh" }}>
 
@@ -4868,28 +4885,31 @@ function ReportScreen({ user, u, onBack }) {
       <div className="no-print" style={{ position:"fixed", top:0, left:0, right:0, zIndex:100, background:"rgba(255,255,255,0.95)", backdropFilter:"blur(8px)", borderBottom:"1px solid #E2E8F0", padding:"10px 24px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
         <button onClick={onBack} style={{ background:"none", border:"1px solid #E2E8F0", borderRadius:8, padding:"7px 16px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#64748B" }}>← Back</button>
         <span style={{ fontSize:12, color:"#94A3B8" }}>This is your report — what you see is what prints</span>
-        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 22px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:700 }}>🖨 Save as PDF</button>
+        <button onClick={() => window.print()} style={{ background:"#1D4ED8", border:"none", borderRadius:8, padding:"8px 22px", cursor:"pointer", fontFamily:"inherit", fontSize:13, color:"#fff", fontWeight:700 }}>Save as PDF</button>
       </div>
 
       {/* Report — exactly as it prints */}
       <div id="report-root" style={{ maxWidth:800, margin:"0 auto", paddingTop:60 }}>
 
         {/* ── Cover header ── */}
-        <div style={{ background:"linear-gradient(135deg, #0F172A 0%, #1E3A8A 100%)", padding:"36px 32px 32px", color:"#fff" }}>
-          <div style={{ fontSize:11, letterSpacing:3, color:"#93C5FD", textTransform:"uppercase", marginBottom:16 }}>CogBench · Cognitive Performance Report</div>
-          <div style={{ fontSize:28, fontWeight:900, letterSpacing:-1, marginBottom:6, lineHeight:1.1 }}>{user.name}</div>
-          <div style={{ fontSize:13, color:"#CBD5E1", marginBottom:24 }}>
-            Completed {dateStr} &nbsp;·&nbsp; {user.orderGroup === "DL" ? "Dark → Light" : "Light → Dark"}
+        <div style={{ background:"#0F172A", padding:"40px 32px 32px", color:"#fff" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:16, marginBottom:28, borderBottom:"1px solid rgba(255,255,255,0.12)", paddingBottom:20 }}>
+            <div>
+              <div style={{ fontSize:11, letterSpacing:3, color:"#93C5FD", textTransform:"uppercase", fontWeight:700, marginBottom:6 }}>CogBench Research Platform</div>
+              <div style={{ fontSize:22, fontWeight:800, letterSpacing:-.5, lineHeight:1.2 }}>Individual Cognitive Performance Report</div>
+              <div style={{ fontSize:12, color:"#94A3B8", marginTop:4 }}>Dark Mode vs Light Mode — Within-Subjects Study</div>
+            </div>
+            <div style={{ textAlign:"right", fontSize:11, color:"#94A3B8", lineHeight:1.7 }}>
+              <div>Report ID: <span style={{ color:"#E2E8F0", fontWeight:700, fontFamily:"monospace" }}>{reportId}</span></div>
+              <div>Generated: <span style={{ color:"#E2E8F0" }}>{generatedStr}</span></div>
+            </div>
           </div>
-          {/* Optimal interface */}
-          <div style={{ background:"rgba(255,255,255,0.1)", borderRadius:12, padding:"16px 20px", border:"1px solid rgba(255,255,255,0.15)" }}>
-            <div style={{ fontSize:11, letterSpacing:2, color:"#93C5FD", textTransform:"uppercase", marginBottom:8 }}>Your Recommended Interface</div>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
-              <div style={{ fontSize:22, fontWeight:900, color:"#fff" }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</div>
-              <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
-                <div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:900, color:"#60A5FA" }}>{pct(stats.accDk)}</div><div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>🌙 Dark</div></div>
-                <div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:900, color:"#FCD34D" }}>{pct(stats.accLt)}</div><div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>☀️ Light</div></div>
-                {stats.rtDk && <div style={{ textAlign:"center" }}><div style={{ fontSize:22, fontWeight:900, color:"#6EE7B7" }}>{ms(Math.min(stats.rtDk, stats.rtLt))}</div><div style={{ fontSize:11, color:"#94A3B8", marginTop:2 }}>Best RT</div></div>}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-end", flexWrap:"wrap", gap:16 }}>
+            <div>
+              <div style={{ fontSize:11, letterSpacing:2, color:"#64748B", textTransform:"uppercase", marginBottom:4 }}>Participant</div>
+              <div style={{ fontSize:26, fontWeight:900, letterSpacing:-.5 }}>{user.name}</div>
+              <div style={{ fontSize:12, color:"#94A3B8", marginTop:6 }}>
+                Session completed {dateStr} &nbsp;·&nbsp; Condition order: {user.orderGroup === "DL" ? "Dark mode first, then Light" : "Light mode first, then Dark"}
               </div>
             </div>
           </div>
@@ -4898,14 +4918,50 @@ function ReportScreen({ user, u, onBack }) {
         {/* ── Body ── */}
         <div style={{ padding:"8px clamp(16px, 5vw, 56px) 64px" }}>
 
+          {/* Executive Summary */}
+          <SectionTitle color={wCol}>Executive Summary</SectionTitle>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"16px 20px", borderRadius:10, background:wBg, border:`1px solid ${wCol}30`, marginBottom:16, flexWrap:"wrap", gap:12 }}>
+            <div>
+              <div style={{ fontSize:11, letterSpacing:1.5, color:"#6B7280", textTransform:"uppercase", marginBottom:4 }}>Recommended Theme</div>
+              <div style={{ fontSize:22, fontWeight:900, color:wCol, textTransform:"capitalize" }}>{winner} Mode</div>
+            </div>
+            <div style={{ fontSize:12, color:"#6B7280", maxWidth:340, textAlign:"right", lineHeight:1.6 }}>
+              Based on accuracy, response time, error rate, workload, and visual comfort measured across both phases of your session.
+            </div>
+          </div>
+          <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13, marginBottom:8 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign:"left", padding:"8px 10px", borderBottom:"2px solid #E2E8F0", color:"#6B7280", fontWeight:700, fontSize:11, letterSpacing:.5, textTransform:"uppercase" }}>Measure</th>
+                <th style={{ textAlign:"center", padding:"8px 10px", borderBottom:"2px solid #E2E8F0", color:DK_COL, fontWeight:700, fontSize:11, letterSpacing:.5, textTransform:"uppercase" }}>Dark Mode</th>
+                <th style={{ textAlign:"center", padding:"8px 10px", borderBottom:"2px solid #E2E8F0", color:LT_COL, fontWeight:700, fontSize:11, letterSpacing:.5, textTransform:"uppercase" }}>Light Mode</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { l:"Accuracy",            d:pct(stats.accDk), li:pct(stats.accLt) },
+                { l:"Average Response Time", d:ms(stats.rtDk), li:ms(stats.rtLt) },
+                { l:"NASA-TLX Workload (/20)", d:nasaDkObj?.totalScore?.toFixed(1) ?? "—", li:nasaLtObj?.totalScore?.toFixed(1) ?? "—" },
+                { l:"Eye Strain (1–7, lower better)", d:dkC?.eyeStrain ?? "—", li:ltC?.eyeStrain ?? "—" },
+                { l:"Overall Satisfaction (1–7)", d:dkC?.satisfaction ?? "—", li:ltC?.satisfaction ?? "—" },
+              ].map(({l,d,li}) => (
+                <tr key={l}>
+                  <td style={{ padding:"9px 10px", borderBottom:"1px solid #F1F5F9", color:"#374151" }}>{l}</td>
+                  <td style={{ padding:"9px 10px", borderBottom:"1px solid #F1F5F9", textAlign:"center", fontWeight:700, color:DK_COL, fontFamily:"monospace" }}>{d}</td>
+                  <td style={{ padding:"9px 10px", borderBottom:"1px solid #F1F5F9", textAlign:"center", fontWeight:700, color:LT_COL, fontFamily:"monospace" }}>{li}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
           {/* About this report */}
           <SectionTitle>About This Report</SectionTitle>
           <div style={{ fontSize:14, color:"#4B5563", lineHeight:1.9 }}>
-            This report summarises your cognitive performance across 8 tasks completed in both dark and light interface themes. It is designed to be meaningful and actionable — not just a list of numbers. Each section includes a plain-language interpretation of what your scores mean in practical terms.
+            This report summarises your cognitive performance across eight tasks completed under both dark and light interface themes as part of a controlled within-subjects study. It is intended to be interpretable on its own — each section pairs raw measurements with a plain-language explanation of what the result means in practical terms.
           </div>
 
           {/* Profile */}
-          <SectionTitle>Your Profile</SectionTitle>
+          <SectionTitle>Participant Profile</SectionTitle>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:"6px 32px" }}>
             {[
               ["Age",              dem.age||"—"],
@@ -4924,7 +4980,7 @@ function ReportScreen({ user, u, onBack }) {
           {user.pref && user.pref !== "none" && (
             <div style={{ marginTop:12, padding:"10px 16px", borderRadius:8, background:wBg, border:`1px solid ${wCol}30`, display:"flex", justifyContent:"space-between", fontSize:13 }}>
               <span style={{ color:"#6B7280" }}>Self-reported preference</span>
-              <span style={{ fontWeight:700, color:wCol }}>{user.pref === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"}</span>
+              <ThemeTag theme={user.pref} size={13} />
             </div>
           )}
 
@@ -4949,8 +5005,8 @@ function ReportScreen({ user, u, onBack }) {
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
                   <div style={{ fontWeight:700, fontSize:14, color:"#111827" }}>{CFG.TL[tid]||tid}</div>
                   <div style={{ display:"flex", gap:16, alignItems:"center" }}>
-                    <span style={{ fontSize:11, color:"#94A3B8" }}>🌙 {pct(tp.dk?.acc)}</span>
-                    <span style={{ fontSize:11, color:"#94A3B8" }}>☀️ {pct(tp.lt?.acc)}</span>
+                    <span style={{ fontSize:11, color:"#94A3B8" }}><ThemeTag theme="dark" size={10} /> {pct(tp.dk?.acc)}</span>
+                    <span style={{ fontSize:11, color:"#94A3B8" }}><ThemeTag theme="light" size={10} /> {pct(tp.lt?.acc)}</span>
                     <span style={{ fontSize:16, fontWeight:900, color:col }}>{pct(acc)}</span>
                   </div>
                 </div>
@@ -4964,13 +5020,14 @@ function ReportScreen({ user, u, onBack }) {
           <SectionTitle color="#7C3AED">Dark vs Light Comparison</SectionTitle>
           <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))", gap:12, marginBottom:16 }}>
             {[
-              { label:"🌙 Dark Mode Accuracy",  value:pct(stats.accDk), bar:stats.accDk,    color:"#1D4ED8" },
-              { label:"☀️ Light Mode Accuracy", value:pct(stats.accLt), bar:stats.accLt,    color:"#D97706" },
-              { label:"🌙 Dark Response Time",  value:ms(stats.rtDk),  bar:null,            color:"#1D4ED8" },
-              { label:"☀️ Light Response Time", value:ms(stats.rtLt),  bar:null,            color:"#D97706" },
-            ].map(({ label, value, bar, color }) => (
-              <div key={label} style={{ padding:"14px 16px", borderRadius:10, border:"1px solid #E2E8F0", background:"#FAFAFA" }}>
-                <div style={{ fontSize:12, color:"#6B7280", marginBottom:6 }}>{label}</div>
+              { theme:"dark",  metric:"Accuracy",      value:pct(stats.accDk), bar:stats.accDk,    color:DK_COL },
+              { theme:"light", metric:"Accuracy",      value:pct(stats.accLt), bar:stats.accLt,    color:LT_COL },
+              { theme:"dark",  metric:"Response Time", value:ms(stats.rtDk),  bar:null,            color:DK_COL },
+              { theme:"light", metric:"Response Time", value:ms(stats.rtLt),  bar:null,            color:LT_COL },
+            ].map(({ theme, metric, value, bar, color }, i) => (
+              <div key={i} style={{ padding:"14px 16px", borderRadius:10, border:"1px solid #E2E8F0", background:"#FAFAFA" }}>
+                <div style={{ marginBottom:6 }}><ThemeTag theme={theme} /></div>
+                <div style={{ fontSize:11, color:"#6B7280", marginBottom:4 }}>{metric}</div>
                 <div style={{ fontSize:20, fontWeight:800, color, marginBottom:bar!=null?8:0 }}>{value}</div>
                 {bar != null && <Bar value={bar} color={color} height={5} />}
               </div>
@@ -4994,14 +5051,14 @@ function ReportScreen({ user, u, onBack }) {
                     <span style={{ color:"#6B7280" }}>{higherBetter?"higher is better":"lower is better"}</span>
                   </div>
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:8 }}>
-                    {[{ v:dv, c:"#1D4ED8", l:"🌙 Dark", better:dkBetter }, { v:lv, c:"#D97706", l:"☀️ Light", better:ltBetter }].map(({ v, c, l, better }) => (
-                      <div key={l} style={{ padding:"8px 12px", borderRadius:8, background:"#F8FAFC", border:`1px solid ${better?"#10B981":"#E2E8F0"}` }}>
+                    {[{ v:dv, theme:"dark", better:dkBetter }, { v:lv, theme:"light", better:ltBetter }].map(({ v, theme, better }) => (
+                      <div key={theme} style={{ padding:"8px 12px", borderRadius:8, background:"#F8FAFC", border:`1px solid ${better?"#10B981":"#E2E8F0"}` }}>
                         <div style={{ display:"flex", justifyContent:"space-between", marginBottom:5, fontSize:12 }}>
-                          <span style={{ color:"#6B7280" }}>{l}</span>
-                          <span style={{ fontWeight:700, color:c }}>{v != null ? `${v}/7` : "—"}</span>
+                          <ThemeTag theme={theme} />
+                          <span style={{ fontWeight:700, color:theme==="dark"?DK_COL:LT_COL }}>{v != null ? `${v}/7` : "—"}</span>
                         </div>
-                        {v != null && <Bar value={v} max={7} color={c} height={5} />}
-                        {better && <div style={{ fontSize:10, color:"#059669", marginTop:4, fontWeight:600 }}>✓ Better condition</div>}
+                        {v != null && <Bar value={v} max={7} color={theme==="dark"?DK_COL:LT_COL} height={5} />}
+                        {better && <div style={{ fontSize:10, color:"#059669", marginTop:4, fontWeight:600 }}>Better condition</div>}
                       </div>
                     ))}
                   </div>
@@ -5016,9 +5073,9 @@ function ReportScreen({ user, u, onBack }) {
             <InsightBox text={insights.workloadInsight} color="#DC2626" />
             {/* Dark vs Light total scores */}
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:12, marginBottom:16 }}>
-              {[{ label:"🌙 Dark Mode", obj:nasaDkObj, col:"#1D4ED8" }, { label:"☀️ Light Mode", obj:nasaLtObj, col:"#D97706" }].map(({ label, obj, col }) => (
-                <div key={label} style={{ padding:"14px 16px", borderRadius:10, background:"#F8FAFC", border:`2px solid ${col}30`, textAlign:"center" }}>
-                  <div style={{ fontSize:11, color:"#6B7280", marginBottom:6 }}>{label}</div>
+              {[{ theme:"dark", obj:nasaDkObj, col:DK_COL }, { theme:"light", obj:nasaLtObj, col:LT_COL }].map(({ theme, obj, col }) => (
+                <div key={theme} style={{ padding:"14px 16px", borderRadius:10, background:"#F8FAFC", border:`2px solid ${col}30`, textAlign:"center" }}>
+                  <div style={{ marginBottom:6, display:"flex", justifyContent:"center" }}><ThemeTag theme={theme} /></div>
                   {obj ? (
                     <>
                       <div style={{ fontSize:26, fontWeight:900, color: obj.totalScore<7?"#15803D":obj.totalScore<13?"#B45309":"#DC2626" }}>{obj.totalScore?.toFixed(1)}<span style={{ fontSize:12, fontWeight:400, color:"#9CA3AF" }}>/20</span></div>
@@ -5037,11 +5094,11 @@ function ReportScreen({ user, u, onBack }) {
                   <div key={k} style={{ padding:"10px 14px", borderRadius:8, background:"#FAFAFA", border:"1px solid #E2E8F0" }}>
                     <div style={{ fontSize:11, color:"#6B7280", marginBottom:6, fontWeight:600 }}>{l}</div>
                     <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
-                      <span style={{ fontSize:12, fontWeight:700, color:"#1D4ED8" }}>🌙 {dv ?? "—"}</span>
-                      <span style={{ fontSize:12, fontWeight:700, color:"#D97706" }}>☀️ {lv ?? "—"}</span>
+                      <span style={{ fontSize:12, fontWeight:700, color:DK_COL }}>{dv ?? "—"}</span>
+                      <span style={{ fontSize:12, fontWeight:700, color:LT_COL }}>{lv ?? "—"}</span>
                     </div>
-                    {dv != null && <Bar value={dv} max={20} color="#1D4ED8" height={4} />}
-                    {lv != null && <div style={{ marginTop:3 }}><Bar value={lv} max={20} color="#D97706" height={4} /></div>}
+                    {dv != null && <Bar value={dv} max={20} color={DK_COL} height={4} />}
+                    {lv != null && <div style={{ marginTop:3 }}><Bar value={lv} max={20} color={LT_COL} height={4} /></div>}
                   </div>
                 );
               })}
@@ -5049,16 +5106,19 @@ function ReportScreen({ user, u, onBack }) {
           </>}
 
           {/* Recommendation */}
-          <SectionTitle color="#059669">Our Recommendation</SectionTitle>
+          <SectionTitle color="#059669">Recommendations</SectionTitle>
           <div style={{ padding:"20px 24px", borderRadius:12, background:wBg, border:`2px solid ${wCol}`, marginBottom:24 }}>
-            <div style={{ fontSize:18, fontWeight:800, color:wCol, marginBottom:10 }}>{winner === "dark" ? "🌙 Dark Mode" : "☀️ Light Mode"} for Focused Work</div>
+            <div style={{ marginBottom:10 }}><ThemeTag theme={winner} size={16} /> <span style={{ fontSize:18, fontWeight:800, color:wCol }}>recommended for focused work</span></div>
             <div style={{ fontSize:14, color:"#374151", lineHeight:1.85 }}>{insights.recommendation}</div>
           </div>
 
           {/* Footer */}
-          <div style={{ marginTop:48, paddingTop:20, borderTop:"1px solid #E2E8F0", display:"flex", justifyContent:"space-between", fontSize:12, color:"#9CA3AF" }}>
-            <span>CogBench · HCI Cognitive Load Study</span>
-            <span>{user.name} · {dateStr}</span>
+          <div style={{ marginTop:48, paddingTop:16, borderTop:"1px solid #E2E8F0", display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:8, fontSize:11, color:"#9CA3AF" }}>
+            <span>CogBench Research Platform · Dark vs Light Mode Cognitive Load Study</span>
+            <span>Report {reportId} · {user.name} · {dateStr}</span>
+          </div>
+          <div style={{ marginTop:6, fontSize:10, color:"#CBD5E1", textAlign:"center" }}>
+            This report contains personal research data generated for the named participant only.
           </div>
 
         </div>
