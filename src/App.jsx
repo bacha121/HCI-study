@@ -508,31 +508,37 @@ function computeAnalysis(users) {
 
   // Per-participant paired data — use ONLY the first valid session per theme
   const pairs = valid.map(u => {
-    const row = { pid: u.id, name: u.name, enc: u._enc };
+    const row = { pid: u.id, name: u.name, enc: u._enc, group: u.orderGroup, pref: u.pref, dem: u._dem };
     for (const theme of ["dark","light"]) {
-      // Take only the FIRST complete session for each theme
       const sess = (u.experiments||[]).filter(e => e.theme === theme && (e.tasks||[]).length > 0);
       if (!sess.length) { row[theme] = null; continue; }
-      const s0 = sess[0]; // first session only
+      const s0 = sess[0];
       const trials = (s0.tasks||[]).flatMap(t => t.trials||[]);
       const tlx = s0.nasaTLX || {};
       const comfort = s0.comfort || {};
+      // rt: mean per-trial response time (ms) — matches Python 'response_time' column mean
+      const rtTrials = trials.filter(t => t.rt != null && t.rt > 0);
+      // tt: mean per-trial completion time (ms) — matches Python 'completion_time' column mean
+      const ttTrials = trials.filter(t => t.tt != null && t.tt > 0);
       row[theme] = {
-        acc:    trials.length ? stat.mean(trials.map(t=>t.acc??0)) : null,
-        tt:     trials.length ? stat.mean(trials.map(t=>t.tt??0))  : null,
-        rt:     trials.filter(t=>t.rt).length ? stat.mean(trials.filter(t=>t.rt).map(t=>t.rt)) : null,
-        err:    trials.length ? stat.mean(trials.map(t=>t.err??0)) : null,
-        clicks: trials.length ? stat.mean(trials.map(t=>t.cl??0))  : null,
-        path:   trials.length ? stat.mean(trials.map(t=>t.path??0)): null,
-        idle:   trials.length ? stat.mean(trials.map(t=>t.idle??0)): null,
-        nasa:   tlx.totalScore||null,
-        nasaMD: tlx.md||null, nasaPD: tlx.pd||null, nasaTD: tlx.td||null,
-        nasaPE: tlx.pe||null, nasaEF: tlx.ef||null, nasFR: tlx.fr||null,
-        vc: comfort.visualComfort||null,
-        es: comfort.eyeStrain||null,
-        fa: comfort.fatigue||null,
-        sa: comfort.satisfaction||null,
-        sessionCount: sess.length, // flag duplicates
+        acc:    trials.length ? stat.mean(trials.map(t => t.acc ?? 0)) : null,
+        tt:     ttTrials.length ? stat.mean(ttTrials.map(t => t.tt)) : null,
+        rt:     rtTrials.length ? stat.mean(rtTrials.map(t => t.rt)) : null,
+        err:    trials.length ? stat.mean(trials.map(t => t.err ?? 0)) : null,
+        clicks: trials.length ? stat.mean(trials.map(t => t.cl ?? 0))  : null,
+        path:   trials.length ? stat.mean(trials.map(t => t.path ?? 0)): null,
+        idle:   trials.length ? stat.mean(trials.map(t => t.idle ?? 0)): null,
+        // NASA-TLX: use raw subscale values matching Python column names
+        nasa:   tlx.totalScore ?? null,
+        nasaMD: tlx.md ?? null, nasaPD: tlx.pd ?? null, nasaTD: tlx.td ?? null,
+        nasaPE: tlx.pe ?? null, nasaEF: tlx.ef ?? null, nasFR: tlx.fr ?? null,
+        // Comfort scale: raw 1-7 values matching Python column names
+        vc: comfort.visualComfort ?? null,
+        es: comfort.eyeStrain    ?? null,
+        fa: comfort.fatigue      ?? null,
+        sa: comfort.satisfaction ?? null,
+        sessionCount: sess.length,
+        trials, // keep for per-task breakdown
       };
     }
     return row;
@@ -637,28 +643,35 @@ function computeAnalysis(users) {
   const demoSummary = computeDemoSummary(users);
 
   // Reliability analysis — Cronbach's Alpha
-  // NASA-TLX: all 6 items (same direction: higher = more workload)
-  const nasaMatrix = valid.map(u => {
-    const tlx = (u.experiments||[]).find(e=>e.nasaTLX)?.nasaTLX;
-    return tlx && [tlx.md,tlx.pd,tlx.td,tlx.pe,tlx.ef,tlx.fr].every(v=>v!=null) ? [tlx.md,tlx.pd,tlx.td,tlx.pe,tlx.ef,tlx.fr] : null;
-  }).filter(Boolean);
-  // Comfort scale: reverse eye strain & fatigue so all items point "higher = better comfort"
-  const comfortMatrix = valid.map(u => {
-    const c = (u.experiments||[]).find(e=>e.comfort)?.comfort;
-    return c && c.visualComfort && c.eyeStrain && c.fatigue && c.satisfaction
-      ? [c.visualComfort, 8-c.eyeStrain, 8-c.fatigue, c.satisfaction]
-      : null;
-  }).filter(Boolean);
+  // Python used all paired participants' NASA-TLX from BOTH conditions combined
+  // (one row per participant-session), matching pingouin.cronbach_alpha behavior
+  const nasaMatrix = pairs.flatMap(p =>
+    ["dark","light"].map(theme => {
+      const d = p[theme]; if (!d) return null;
+      const vals = [d.nasaMD, d.nasaPD, d.nasaTD, d.nasaPE, d.nasaEF, d.nasFR];
+      return vals.every(v => v != null) ? vals : null;
+    })
+  ).filter(Boolean);
+  // Comfort: reverse es & fa so all items point "higher = better comfort"
+  const comfortMatrix = pairs.flatMap(p =>
+    ["dark","light"].map(theme => {
+      const d = p[theme]; if (!d) return null;
+      const { vc, es, fa, sa } = d;
+      return (vc != null && es != null && fa != null && sa != null)
+        ? [vc, 8-es, 8-fa, sa] : null;
+    })
+  ).filter(Boolean);
   const reliability = {
-    nasa:    { alpha: cronbachAlpha(nasaMatrix),    items: 6, label: "NASA-TLX (md, pd, td, pe, ef, fr)",   n: nasaMatrix.length    },
-    comfort: { alpha: cronbachAlpha(comfortMatrix), items: 4, label: "Comfort Scale (vc, es†, fa†, sat)",    n: comfortMatrix.length },
+    nasa:    { alpha: cronbachAlpha(nasaMatrix),    items: 6, label: "NASA-TLX (md, pd, td, pe, ef, fr)",  n: nasaMatrix.length    },
+    comfort: { alpha: cronbachAlpha(comfortMatrix), items: 4, label: "Comfort Scale (vc, es†, fa†, sat)", n: comfortMatrix.length },
   };
 
 
-  // ── Power analysis per test ──────────────────────────────────────────────────
+  // ── Power analysis per test — α=0.05 two-tailed, matching Python scipy/pingouin ──
+  const ALPHA_POWER = 0.05;
   const power = Object.fromEntries(Object.entries(tests).map(([k, t]) => {
     if (!t?.cohensD || !pairs.length) return [k, null];
-    const pw = stat.power(t.cohensD, pairs.length, ALPHA_BONF);
+    const pw = stat.power(Math.abs(t.cohensD), pairs.length, ALPHA_POWER);
     return [k, pw != null ? +pw.toFixed(3) : null];
   }));
 
@@ -669,19 +682,18 @@ function computeAnalysis(users) {
     return [k, stat.wilcoxon(paired.map(p=>p[0]), paired.map(p=>p[1]))];
   }));
 
-  // ── Order effect check (DL vs LD independent t-test) ────────────────────────
-  const dlPairs = pairs.filter(p => {
-    const u2 = valid.find(u3 => u3.id === p.pid);
-    return u2?.orderGroup === "DL";
-  });
-  const ldPairs = pairs.filter(p => {
-    const u2 = valid.find(u3 => u3.id === p.pid);
-    return u2?.orderGroup === "LD";
-  });
+  // ── Order effect check — matching Python: independent t-test on dark-mode metric
+  //    comparing DL group (dark first) vs LD group (dark second).
+  //    Python used: scipy.stats.ttest_ind(dl_dark_rt, ld_dark_rt)
+  const dlPairs = pairs.filter(p => p.group === "DL");
+  const ldPairs = pairs.filter(p => p.group === "LD");
   const orderEffect = ["acc","rt","nasa"].reduce((acc2, k) => {
-    const dlVals = dlPairs.map(p => (p.dark[k]??0) - (p.light[k]??0)).filter(v=>v!=null);
-    const ldVals = ldPairs.map(p => (p.dark[k]??0) - (p.light[k]??0)).filter(v=>v!=null);
-    acc2[k] = dlVals.length >= 2 && ldVals.length >= 2 ? stat.independentT(dlVals, ldVals) : null;
+    const dlVals = dlPairs.map(p => p.dark[k]).filter(v => v != null);
+    const ldVals = ldPairs.map(p => p.dark[k]).filter(v => v != null);
+    acc2[k] = dlVals.length >= 2 && ldVals.length >= 2
+      ? { ...stat.independentT(dlVals, ldVals), nDL: dlVals.length, nLD: ldVals.length,
+          meanDL: +stat.mean(dlVals).toFixed(3), meanLD: +stat.mean(ldVals).toFixed(3) }
+      : null;
     return acc2;
   }, {});
 
@@ -760,22 +772,26 @@ function computeAnalysis(users) {
       dkVc:avg(dkVc), ltVc:avg(ltVc), diffVc:+(avg(dkVc||[])-avg(ltVc||[])).toFixed(2) };
   }).filter(Boolean);
 
-  // P3 — Preference–performance alignment
+  // P3 — Preference–performance alignment (strict comparison, matching Python script)
   let prefMatch=0, prefMismatch=0, prefTie=0;
   const matchGaps=[], mismatchGaps=[];
   pairs.forEach(p=>{
-    const pref=p.pref; const dkA=gm(p,'dark','acc'); const ltA=gm(p,'light','acc');
+    const pref=p.pref;
+    const dkA=p.dark?.acc; const ltA=p.light?.acc;
     if(!pref||dkA==null||ltA==null) return;
-    const better=dkA-ltA>0.02?'dark':ltA-dkA>0.02?'light':'tie';
+    const better=dkA>ltA?'dark':ltA>dkA?'light':'tie';
     if(better==='tie'){prefTie++;return;}
     if(pref===better){prefMatch++;matchGaps.push(Math.abs(dkA-ltA));}
     else{prefMismatch++;mismatchGaps.push(Math.abs(dkA-ltA));}
   });
-  const patternPrefAlign = { match:prefMatch, mismatch:prefMismatch, tie:prefTie,
-    total:prefMatch+prefMismatch+prefTie,
-    matchPct:+((prefMatch/(prefMatch+prefMismatch+prefTie||1))*100).toFixed(1),
+  const prefTotal=prefMatch+prefMismatch+prefTie;
+  const patternPrefAlign = {
+    match:prefMatch, mismatch:prefMismatch, tie:prefTie, total:prefTotal,
+    matchPct:+((prefMatch/(prefTotal||1))*100).toFixed(1),
+    matchPctExclTies:+((prefMatch/(Math.max(prefMatch+prefMismatch,1)))*100).toFixed(1),
     avgMatchGap:matchGaps.length?+(avg(matchGaps)).toFixed(3):null,
-    avgMismatchGap:mismatchGaps.length?+(avg(mismatchGaps)).toFixed(3):null };
+    avgMismatchGap:mismatchGaps.length?+(avg(mismatchGaps)).toFixed(3):null,
+  };
 
   // P4 — Task complexity tiers
   const SIMPLE=['visual_search','flanker','symbol_match'];
@@ -803,10 +819,15 @@ function computeAnalysis(users) {
       dkNasa:dkN.length?+avg(dkN).toFixed(2):null, ltNasa:ltN.length?+avg(ltN).toFixed(2):null };
   });
 
-  // P6 — Individual winners
+  // P6 — Individual winners (strict comparison, matching Python)
   let dkWin=0,ltWin=0,tied=0; const dkGaps=[],ltGaps=[];
-  pairs.forEach(p=>{ const dk=gm(p,'dark','acc'),lt=gm(p,'light','acc'); if(!dk||!lt) return;
-    const d=dk-lt; if(d>0.02){dkWin++;dkGaps.push(d);} else if(d<-0.02){ltWin++;ltGaps.push(-d);} else tied++; });
+  pairs.forEach(p=>{
+    const dkA=p.dark?.acc, ltA=p.light?.acc; if(dkA==null||ltA==null) return;
+    const d=dkA-ltA;
+    if(d>0){dkWin++;dkGaps.push(d);}
+    else if(d<0){ltWin++;ltGaps.push(-d);}
+    else tied++;
+  });
   const individualWinners = { dkWin, ltWin, tied, total:dkWin+ltWin+tied,
     dkAvgGap:dkGaps.length?+avg(dkGaps).toFixed(3):null,
     ltAvgGap:ltGaps.length?+avg(ltGaps).toFixed(3):null };
