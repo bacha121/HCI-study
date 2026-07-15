@@ -4616,12 +4616,12 @@ function AnalysisTab({ u, users }) {
       {/* ══ 09 APA RESULTS (collapsible) ════════════════════════════════════════ */}
       <SectionWrap>
         <SHdr num="09" title="APA-Formatted Results"
-          sub="Ready to copy into your thesis or paper. Expand, select all, and paste."
+          sub="Statistical results summarized in APA 7th-edition style."
           action={<ExpandToggle id="apa" label="APA text" />} />
         {expanded.apa ? (
           <div style={{ padding:pad }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-              <div style={{ fontSize:12, color:u.text2 }}>Select all text and paste into your thesis. Review before submission.</div>
+              <div style={{ fontSize:12, color:u.text2 }}>Verify all values against the underlying analysis before use.</div>
               <button onClick={()=>{ const el=document.getElementById('apa-text'); if(el){ const r=document.createRange(); r.selectNodeContents(el); window.getSelection()?.removeAllRanges(); window.getSelection()?.addRange(r); navigator.clipboard?.writeText(el.innerText).catch(()=>{}); } }} style={{ padding:'6px 14px', borderRadius:8, border:`1px solid ${SIG}40`, background:`${SIG}10`, color:SIG, fontFamily:L.font, cursor:'pointer', fontSize:12, fontWeight:600 }}>Copy all</button>
             </div>
             <div id="apa-text" style={{ padding:'24px 28px', background:u.fill, borderRadius:10, border:`1px solid ${u.border}`, userSelect:'all', cursor:'text', lineHeight:2 }}>
@@ -4643,13 +4643,13 @@ function AnalysisTab({ u, users }) {
               ))}
             </div>
             <div style={{ fontSize:12, color:u.text2, marginTop:10, padding:'8px 14px', borderRadius:8, background:`${u.accent}08`, border:`1px solid ${u.accent}20` }}>
-              💡 Review all statistical values, update participant demographics, and verify italics before submission. Generated from live study data.
+              💡 Values are generated from live study data — recompute and verify before relying on them elsewhere.
             </div>
           </div>
         ) : (
           <div style={{ padding:`16px ${isTablet?28:18}px` }}>
             <div style={{ fontSize:13, color:u.text2, padding:'10px 14px', borderRadius:8, background:u.fill, border:`1px solid ${u.border}` }}>
-              Auto-generated APA 7th-edition formatted paragraphs covering participants, statistical analysis, accuracy, response time, workload, and {sigRows.length>0?`${sigRows.length} significant findings`:"null findings"} — ready to paste into your thesis.
+              APA 7th-edition formatted paragraphs covering participants, statistical analysis, accuracy, response time, workload, and {sigRows.length>0?`${sigRows.length} significant findings`:"null findings"}.
             </div>
           </div>
         )}
