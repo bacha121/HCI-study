@@ -2,7 +2,7 @@
 
 ## What you need
 - A free [Supabase](https://supabase.com) account (database)
-- A free [Netlify](https://netlify.com) account (hosting)
+- A free [Vercel](https://vercel.com) account (hosting)
 - [Node.js 18+](https://nodejs.org) installed on your computer
 
 ---
@@ -47,30 +47,31 @@ This creates a `dist/` folder with everything needed.
 
 ---
 
-## Step 4 — Deploy to Netlify (3 minutes)
+## Step 4 — Deploy to Vercel (3 minutes)
 
-**Option A — Drag and drop (easiest)**
-1. Go to [netlify.com](https://netlify.com) → **Add new site → Deploy manually**
-2. Drag the `dist/` folder into the browser window
-3. Netlify gives you a URL like `https://random-name.netlify.app`
+**Option A — Dashboard (easiest)**
+1. Go to [vercel.com](https://vercel.com) → **Add New → Project**
+2. Import the repo (or drag/upload the project folder)
+3. Framework preset: **Vite** — build command `npm run build`, output directory `dist`
+4. Click **Deploy**. Vercel gives you a URL like `https://your-project.vercel.app`
 
 **Option B — CLI**
 ```bash
-npm install -g netlify-cli
-netlify deploy --dir dist --prod
+npm install -g vercel
+vercel --prod
 ```
 
 ---
 
-## Step 5 — Set environment variables on Netlify
+## Step 5 — Set environment variables on Vercel
 
-The `.env` file is not deployed (it's local only). You need to set the variables in Netlify too:
+The `.env` file is not deployed (it's local only). You need to set the variables in Vercel too:
 
-1. Netlify dashboard → your site → **Site configuration → Environment variables**
+1. Vercel dashboard → your project → **Settings → Environment Variables**
 2. Add:
    - `VITE_SUPABASE_URL` = your Supabase URL
    - `VITE_SUPABASE_ANON_KEY` = your anon key
-3. Trigger a redeploy (Site configuration → Deploys → Trigger deploy)
+3. Trigger a redeploy (Deployments → **⋯** on latest → Redeploy)
 
 ---
 
