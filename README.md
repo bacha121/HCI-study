@@ -14,12 +14,14 @@ No accounts required — the app works out of the box using local storage only.
 ```bash
 # 1. Clone the repo
 git clone https://github.com/bacha121/HCI-study.git
+
+# 2. Move into the project folder
 cd HCI-study
 
-# 2. Install dependencies
+# 3. Install dependencies
 npm install
 
-# 3. Start the dev server
+# 4. Start the dev server
 npm run dev
 ```
 
