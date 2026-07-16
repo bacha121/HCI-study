@@ -1,13 +1,45 @@
-# CogBench — Deployment Guide
+# CogBench — Setup & Deployment Guide
 
 ## What you need
-- A free [Supabase](https://supabase.com) account (database)
-- A free [Vercel](https://vercel.com) account (hosting)
 - [Node.js 18+](https://nodejs.org) installed on your computer
+- A free [Supabase](https://supabase.com) account — only needed if you want cloud sync (see below); the app runs fine without it
+- A free [Vercel](https://vercel.com) account — only needed for online deployment (see below)
 
 ---
 
-## Step 1 — Set up Supabase (5 minutes)
+## Run it locally (for reviewing/grading)
+
+No accounts required — the app works out of the box using local storage only.
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/bacha121/HCI-study.git
+cd HCI-study
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the dev server
+npm run dev
+```
+
+Opens at `http://localhost:5173` with hot reload.
+
+Without Supabase credentials configured, the admin panel shows **⚠ Local storage only** — all data is kept in the browser and nothing is lost; cloud sync is optional (see [How it works](#how-it-works-after-deployment) below).
+
+**Admin login** (to view collected data / export CSV):
+```
+Email:    admin@study.com
+Password: hci2024
+```
+
+---
+
+## Optional: enable cloud sync with Supabase
+
+If you want participant data to sync to a shared database instead of staying local to each browser, follow the steps below.
+
+### Step 1 — Set up Supabase (5 minutes)
 
 1. Go to [supabase.com](https://supabase.com) → **New project**
 2. Name it `cogbench`, choose a region close to your participants
@@ -19,7 +51,7 @@
 
 ---
 
-## Step 2 — Configure the app (2 minutes)
+### Step 2 — Configure the app (2 minutes)
 
 1. In the project folder, copy `.env.example` to `.env`:
    ```
@@ -33,7 +65,7 @@
 
 ---
 
-## Step 3 — Build the app (2 minutes)
+### Step 3 — Build the app (2 minutes)
 
 ```bash
 # Install dependencies
@@ -47,7 +79,7 @@ This creates a `dist/` folder with everything needed.
 
 ---
 
-## Step 4 — Deploy to Vercel (3 minutes)
+### Step 4 — Deploy to Vercel (3 minutes)
 
 **Option A — Dashboard (easiest)**
 1. Go to [vercel.com](https://vercel.com) → **Add New → Project**
@@ -63,7 +95,7 @@ vercel --prod
 
 ---
 
-## Step 5 — Set environment variables on Vercel
+### Step 5 — Set environment variables on Vercel
 
 The `.env` file is not deployed (it's local only). You need to set the variables in Vercel too:
 
@@ -101,29 +133,11 @@ cogbench/
 ├── schema.sql          ← run once in Supabase SQL editor
 └── src/
     ├── main.jsx        ← React entry point
-    └── App.jsx         ← the full application (was hci-study.jsx)
+    └── App.jsx         ← the full application
 ```
-
-**Rename `hci-study.jsx` to `src/App.jsx` before running `npm install`.**
 
 ---
 
-## Admin credentials
+## Changing admin credentials
 
-```
-Email:    admin@study.com
-Password: hci2024
-```
-
-Change these in `src/App.jsx` → search for `CFG.adminEmail` and `CFG.adminPw`.
-
----
-
-## Local development
-
-```bash
-npm run dev
-```
-
-Opens at `http://localhost:5173` with hot reload.
-# HCI-study
+Edit `src/App.jsx` → search for `CFG.adminEmail` and `CFG.adminPw`.
